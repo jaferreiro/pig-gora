@@ -93,12 +93,10 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     
     this.keyClassName = keyClassName ;
     this.persistentClassName = persistentClassName ;
-    
     try {
       this.keyClass = Class.forName(keyClassName);
       Class<?> persistentClazz = Class.forName(persistentClassName);
       this.persistentClass = persistentClazz.asSubclass(PersistentBase.class);
-
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e);
     }
@@ -138,19 +136,21 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   private JobConf initializeLocalJobConfig(Job job) {
     Properties udfProps = getUDFProperties();
     Configuration jobConf = job.getConfiguration();
-    JobConf localConf = new JobConf(jobConf);
+    JobConf localConf = new JobConf(jobConf); // localConf starts as a copy of jobConf
     if (udfProps.containsKey(GORA_CONFIG_SET)) {
+      // Already configured (maybe from frontend to backend)
       for (Entry<Object, Object> entry : udfProps.entrySet()) {
         localConf.set((String) entry.getKey(), (String) entry.getValue());
       }
     } else {
+      // Not configured. We load to localConf the configuration and put it in udfProps
       Configuration goraConf = new Configuration();
       for (Entry<String, String> entry : goraConf) {
         // JobConf may have some conf overriding ones in hbase-site.xml
         // So only copy hbase config not in job config to UDFContext
         // Also avoids copying core-default.xml and core-site.xml
         // props in hbaseConf to UDFContext which would be redundant.
-        if (jobConf.get(entry.getKey()) == null) {
+        if (localConf.get(entry.getKey()) == null) {
           udfProps.setProperty(entry.getKey(), entry.getValue());
           localConf.set(entry.getKey(), entry.getValue());
         }
@@ -206,7 +206,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       throw new IOException(e);
     }
 
-    return this.persistent2Tuple(persistentKey,persistentObj, persistentObj.getSchema());
+    return this.persistent2Tuple(persistentKey, persistentObj, persistentObj.getSchema());
 
   }
 
