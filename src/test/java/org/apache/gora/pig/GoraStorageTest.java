@@ -66,7 +66,12 @@ public class GoraStorageTest {
 	}
 
 	@Test
-	public void test() throws IOException {
+	public void testLoadSubset() {
+	    
+	}
+	
+	@Test
+	public void testLoadAllFields() throws IOException {
         FileSystem fs = FileSystem.get(configuration) ;
 
         Path inputHdfsFile = new Path("frases.txt") ;
