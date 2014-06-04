@@ -2,6 +2,7 @@ package org.apache.gora.pig;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -16,6 +17,7 @@ import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericData.Array;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.gora.mapreduce.GoraInputFormat;
 import org.apache.gora.mapreduce.GoraInputFormatFactory;
 import org.apache.gora.mapreduce.GoraOutputFormat;
@@ -74,6 +76,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   protected String persistentClassName ;
   protected Class<?> keyClass;
   protected Class<? extends PersistentBase> persistentClass;
+  protected Schema persistentSchema ;
   private   DataStore<?, ? extends PersistentBase> dataStore ;
   protected GoraInputFormat<?,? extends PersistentBase> inputFormat ;
   protected GoraRecordReader<?,? extends PersistentBase> reader ;
@@ -82,12 +85,32 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   protected PigSplit split ;
   protected ResourceSchema readResourceSchema ;
   protected ResourceSchema writeResourceSchema ;
+
+  /** Fields splitted from location, indicating what fields to load/save */
+  protected String[] fields ;
   
+  /** Setted to 'true' if location is '*'. All fields will be loaded into a tuple when reading,
+   * and all tuple fields will be copied to the persistent instance when saving. */
+  protected boolean loadSaveAllFields = false ;
+
   /**
-   * Creates a new GoraStorage and set the keyClass from the key class name.
-   * @param keyClassName class' full name with package (org.apache....)
+   * Creates a new 
+   * @param keyClassName
+   * @param persistentClassName
    */
   public GoraStorage(String keyClassName, String persistentClassName) {
+      this(keyClassName, persistentClassName, "*") ;
+  }
+
+  /**
+   * Creates a new GoraStorage and set the keyClass from the key class name.
+   * @param keyClassName key class. Full name with package (org.apache....)
+   * @param persistentClassName persistent class. Full name with package 
+   * @param fields comma separated fields to load/save | '*' for all.
+   *   '*' loads all fields from the persistent class.
+   *   '*' saves all fields of each tuple to persist (not mandatory all fields of the persistent class).
+   */
+  public GoraStorage(String keyClassName, String persistentClassName, String csvFields) {
     super();
     LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage constructor() {}", this);
     
@@ -100,8 +123,53 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e);
     }
+    
+    // This dirty lines are needed for parse Fields :( We don't have a job configuration
+    // to connect to the datastore and do it clean.
+    java.lang.reflect.Field schemaAttribute;
+    try {
+        schemaAttribute = this.persistentClass.getField("_SCHEMA");
+        this.persistentSchema = (Schema) schemaAttribute.get(null) ;
+        this.parseFields(csvFields) ;
+    } catch (Exception e) {
+        throw new RuntimeException(e);
+    }
+    
   }
 
+// AQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUI
+// AQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUI  
+  /**
+   * Returns the fields to read/write depending
+   * @param location
+   * @throws NoSuchFieldException 
+   * @throws SecurityException 
+   */
+  private String[] parseFields(String csvFields) throws SecurityException, NoSuchFieldException {
+    List<Field> avroFields = this.persistentSchema.getFields() ;
+
+    String[] returnFields = new String[avroFields.size()+1] ;
+    returnFields[0] = "key" ;
+    for (int i=1; i < avroFields.size()+1 ; i++) {
+        returnFields[i++] = avroFields.get(i-1).name() ;
+    }
+    
+    if (csvFields.contains("*")) {
+      this.loadSaveAllFields = true ;
+      return returnFields ;
+    }
+    
+    String[] fieldsInConstructor = csvFields.split("\\s*,\\s*") ; // splits "field, field, field, field"
+
+    int i=1 ;
+    while (i < returnFields.length) {
+      if (!ArrayUtils.contains(fieldsInConstructor, returnFields[i])) {
+        ArrayUtils.remove()
+      }
+    }
+    
+  }
+  
   /**
    * Returns the internal DataStore for <code>&lt;keyClass,persistentClass&gt;</code>
    * using configuration set in job (from setLocation()).
@@ -119,6 +187,10 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     return this.dataStore ;
   }
   
+  /**
+   * Gets the job, initialized the localJobConf (the actual used to create a datastore) and splits from 'location' the fields to load/save
+   *  
+   */
   @Override
   public void setLocation(String location, Job job) throws IOException {
     LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setLocation() {} {}", location, this);
@@ -188,7 +260,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public Tuple getNext() throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getNext() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getNext() {}", this);
 
     try {
       if (!this.reader.nextKeyValue()) return null;
@@ -222,8 +294,6 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    *           On setting tuple field errors
    */
   private Tuple persistent2Tuple(Object persistentKey, PersistentBase persistentObj, Schema schema) throws ExecException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage createTuple() {}", this);
-
     Iterator<Field> fieldsIterator = schema.getFields().iterator();
     Tuple tuple = TupleFactory.getInstance().newTuple(schema.getFields().size() + 1);
     
@@ -238,7 +308,6 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     }
     
     return tuple ;
-    
   }
 
   /**
