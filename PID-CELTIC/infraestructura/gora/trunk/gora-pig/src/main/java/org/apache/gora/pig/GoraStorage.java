@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
@@ -17,7 +19,6 @@ import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericData.Array;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.lang.ArrayUtils;
 import org.apache.gora.mapreduce.GoraInputFormat;
 import org.apache.gora.mapreduce.GoraInputFormatFactory;
 import org.apache.gora.mapreduce.GoraOutputFormat;
@@ -25,6 +26,7 @@ import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordReader;
 import org.apache.gora.mapreduce.GoraRecordWriter;
 import org.apache.gora.persistency.impl.PersistentBase;
+import org.apache.gora.query.Query;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
 import org.apache.gora.util.AvroUtils;
@@ -87,8 +89,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   protected ResourceSchema writeResourceSchema ;
 
   /** Fields splitted from location, indicating what fields to load/save */
-  protected String[] fields ;
-  
+  protected Set<String> loadSaveFields = new HashSet<String>() ;
+  protected String[] loadQueryFields ;
   /** Setted to 'true' if location is '*'. All fields will be loaded into a tuple when reading,
    * and all tuple fields will be copied to the persistent instance when saving. */
   protected boolean loadSaveAllFields = false ;
@@ -128,48 +130,35 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // to connect to the datastore and do it clean.
     java.lang.reflect.Field schemaAttribute;
     try {
-        schemaAttribute = this.persistentClass.getField("_SCHEMA");
-        this.persistentSchema = (Schema) schemaAttribute.get(null) ;
-        this.parseFields(csvFields) ;
-    } catch (Exception e) {
-        throw new RuntimeException(e);
-    }
-    
-  }
+      schemaAttribute = this.persistentClass.getField("_SCHEMA");
+      this.persistentSchema = (Schema) schemaAttribute.get(null) ;
 
-// AQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUI
-// AQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUIAQUI  
-  /**
-   * Returns the fields to read/write depending
-   * @param location
-   * @throws NoSuchFieldException 
-   * @throws SecurityException 
-   */
-  private String[] parseFields(String csvFields) throws SecurityException, NoSuchFieldException {
-    List<Field> avroFields = this.persistentSchema.getFields() ;
-
-    String[] returnFields = new String[avroFields.size()+1] ;
-    returnFields[0] = "key" ;
-    for (int i=1; i < avroFields.size()+1 ; i++) {
-        returnFields[i++] = avroFields.get(i-1).name() ;
-    }
-    
-    if (csvFields.contains("*")) {
-      this.loadSaveAllFields = true ;
-      return returnFields ;
-    }
-    
-    String[] fieldsInConstructor = csvFields.split("\\s*,\\s*") ; // splits "field, field, field, field"
-
-    int i=1 ;
-    while (i < returnFields.length) {
-      if (!ArrayUtils.contains(fieldsInConstructor, returnFields[i])) {
-        ArrayUtils.remove()
+      if (csvFields.contains("*")) {
+        this.setLoadSaveAllFields(true) ;
+        return;
       }
+        
+      // CSV fields declared in constructor. We will use the intersection of the sets declared in constructor
+      // and belonging to the Persistent instance.
+      String[] fieldsInConstructor = csvFields.split("\\s*,\\s*") ; // splits "field, field, field, field"
+      Set<String> declaredConstructorFields = new HashSet<String>(Arrays.asList(fieldsInConstructor)) ;
+      
+      List<Field> avroFields = this.persistentSchema.getFields() ;
+      Set<String> avroFieldsNames = new HashSet<String>() ;
+      for(Field f: avroFields) {
+        avroFieldsNames.add(f.name()) ;
+      }
+      declaredConstructorFields.retainAll(avroFields) ;
+      
+      // Populate the set with the fields that will be load/saved
+      this.getLoadSaveFields().add("key") ;
+      this.getLoadSaveFields().addAll(declaredConstructorFields) ;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
     
   }
-  
+
   /**
    * Returns the internal DataStore for <code>&lt;keyClass,persistentClass&gt;</code>
    * using configuration set in job (from setLocation()).
@@ -237,7 +226,13 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   public InputFormat getInputFormat() throws IOException {
     LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getInputFormat() {}", this);
     this.inputFormat = GoraInputFormatFactory.createInstance(this.keyClass, this.persistentClass);
-    GoraInputFormat.setInput(this.job, this.getDataStore().newQuery(), false) ;
+
+    Query query = this.getDataStore().newQuery() ;
+    if (!this.isLoadSaveAllFields()) {
+      query.setFields(this.loadQueryFields) ;
+    }
+    GoraInputFormat.setInput(this.job, query, false) ;
+    
     inputFormat.setConf(this.job.getConfiguration()) ;
     return this.inputFormat ; 
   }
@@ -873,6 +868,22 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public void cleanupOnSuccess(String location, Job job) throws IOException {
     // Do nothing
+  }
+
+  public Set<String> getLoadSaveFields() {
+    return loadSaveFields;
+  }
+
+  public void setLoadSaveFields(Set<String> loadSaveFields) {
+    this.loadSaveFields = loadSaveFields;
+  }
+
+  public boolean isLoadSaveAllFields() {
+    return loadSaveAllFields;
+  }
+
+  public void setLoadSaveAllFields(boolean loadSaveAllFields) {
+    this.loadSaveAllFields = loadSaveAllFields;
   }
 
 }
