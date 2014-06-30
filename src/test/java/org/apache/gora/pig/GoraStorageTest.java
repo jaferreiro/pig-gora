@@ -6,11 +6,15 @@ import java.io.BufferedReader;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Properties;
 
 import junit.framework.Assert;
 
+import org.apache.gora.examples.generated.WebPage;
+import org.apache.gora.store.DataStore;
+import org.apache.gora.store.DataStoreFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -27,79 +31,82 @@ import org.junit.Test;
 
 public class GoraStorageTest {
 
-    /** The configuration */
-    protected static Configuration configuration;
+  /** The configuration */
+  protected static Configuration            configuration;
 
-    private static HBaseTestingUtility utility;
-    private static PigServer pigServer ;
-	
-	@BeforeClass
-	public static void setUpBeforeClass() throws Exception {
-        System.setProperty(HBaseTestingUtility.TEST_DIRECTORY_KEY, "build/test-data");
-        Configuration localExecutionConfiguration = new Configuration() ;
-        localExecutionConfiguration.setStrings("hadoop.log.dir", localExecutionConfiguration.get("hadoop.tmp.dir")) ;
-        utility = new HBaseTestingUtility(localExecutionConfiguration);
-        utility.startMiniCluster(1);
-        utility.startMiniMapReduceCluster(1) ;
-        configuration = utility.getConfiguration();
-        
-        configuration.writeXml(new FileOutputStream("target/test-classes/core-site.xml")) ;
-        
-        Properties props = new Properties();
-        props.setProperty("fs.default.name", configuration.get("fs.default.name"));
-        props.setProperty("mapred.job.tracker", configuration.get("mapred.job.tracker"));
-        pigServer = new PigServer(ExecType.MAPREDUCE, props);
-	}
+  private static HBaseTestingUtility        utility;
+  private static PigServer                  pigServer;
+  private static DataStore<String, WebPage> dataStore;
 
-	@AfterClass
-	public static void tearDownAfterClass() throws Exception {
-        pigServer.shutdown() ;
-        utility.shutdownMiniMapReduceCluster() ;
-	}
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
+    System.setProperty(HBaseTestingUtility.TEST_DIRECTORY_KEY, "build/test-data");
+    Configuration localExecutionConfiguration = new Configuration();
+    localExecutionConfiguration.setStrings("hadoop.log.dir", localExecutionConfiguration.get("hadoop.tmp.dir"));
+    utility = new HBaseTestingUtility(localExecutionConfiguration);
+    utility.startMiniCluster(1);
+    utility.startMiniMapReduceCluster(1);
+    configuration = utility.getConfiguration();
 
-	@Before
+    configuration.writeXml(new FileOutputStream("target/test-classes/core-site.xml"));
+
+    Properties props = new Properties();
+    props.setProperty("fs.default.name", configuration.get("fs.default.name"));
+    props.setProperty("mapred.job.tracker", configuration.get("mapred.job.tracker"));
+    pigServer = new PigServer(ExecType.MAPREDUCE, props);
+
+    dataStore = DataStoreFactory.getDataStore(String.class, WebPage.class, configuration);
+  }
+
+  @AfterClass
+  public static void tearDownAfterClass() throws Exception {
+    pigServer.shutdown();
+    utility.shutdownMiniMapReduceCluster();
+  }
+
+  @Before
 	public void setUp() throws Exception {
+	  WebPage w = dataStore.getBeanFactory().newPersistent() ;
+	  w.setUrl("http://gora.apache.org") ;
+	  w.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
+	  w.addToParsedContent("elemento1") ;
+    w.addToParsedContent("elemento2") ;
+    w.putToOutlinks("k1", "v1") ;
 	}
 
-	@After
-	public void tearDown() throws Exception {
-	}
+  @After
+  public void tearDown() throws Exception {
+  }
 
-	@Test
-	public void testLoadSubset() {
-	    
-	}
-	
-	@Test
-	public void testLoadAllFields() throws IOException {
-        FileSystem fs = FileSystem.get(configuration) ;
+  @Test
+  public void testLoadSubset() {
 
-        Path inputHdfsFile = new Path("frases.txt") ;
-        fs.delete(inputHdfsFile, true) ;
-        
-        fs.copyFromLocalFile(false, true, new Path("target/test-classes/datos/frases.txt"), inputHdfsFile) ;
+  }
 
-        pigServer.setJobName("normalizacion UDF test") ;
-        pigServer.registerJar("target/normalizador-0.0.1-SNAPSHOT.jar") ;
-        pigServer.registerJar("target/lib/*.jar") ;
-        pigServer.registerFunction("normalizar", new FuncSpec("es.indra.innovationlabs.bigdata.normalizador.UDFNormalizador")) ;
-        pigServer.registerQuery("textos = LOAD 'frases.txt' as (idioma:chararray, texto:chararray) ;") ;
-        pigServer.registerQuery("textos_normalizados = FOREACH textos GENERATE normalizar(texto,idioma) ;" ) ;
-        
-        Iterator<Tuple> resultados = pigServer.openIterator("textos_normalizados") ;
-        Assert.assertTrue("Se esperaban resultados tras la ejecución en Pig, pero no se ha recibido ninguno", resultados.hasNext()) ;
+  @Test
+  public void testLoadAllFields() throws IOException {
+    FileSystem fs = FileSystem.get(configuration);
 
-        BufferedReader frasesEsperadas = new BufferedReader(new FileReader("target/test-classes/datos/esperado.txt")) ;
-        try {
-            while (resultados.hasNext()) {
-                Tuple resultado = resultados.next() ;
-                String fraseResultado = (String) resultado.get(0) ;
-                String fraseEsperada = frasesEsperadas.readLine() ;
-                Assert.assertEquals(fraseEsperada,fraseResultado) ;
-            }
-        } finally {
-            frasesEsperadas.close() ;
-        }
-	}
+    pigServer.setJobName("gora-pig test - load all fields");
+    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/lib/*.jar");
+    pigServer.registerQuery("textos = LOAD 'frases.txt' as (idioma:chararray, texto:chararray) ;");
+    pigServer.registerQuery("textos_normalizados = FOREACH textos GENERATE normalizar(texto,idioma) ;");
+
+    Iterator<Tuple> resultados = pigServer.openIterator("textos_normalizados");
+    Assert.assertTrue("Se esperaban resultados tras la ejecución en Pig, pero no se ha recibido ninguno", resultados.hasNext());
+
+    BufferedReader frasesEsperadas = new BufferedReader(new FileReader("target/test-classes/datos/esperado.txt"));
+    try {
+      while (resultados.hasNext()) {
+        Tuple resultado = resultados.next();
+        String fraseResultado = (String) resultado.get(0);
+        String fraseEsperada = frasesEsperadas.readLine();
+        Assert.assertEquals(fraseEsperada, fraseResultado);
+      }
+    } finally {
+      frasesEsperadas.close();
+    }
+  }
 
 }
