@@ -90,7 +90,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   protected ResourceSchema readResourceSchema ;
   protected ResourceSchema writeResourceSchema ;
 
-  /** Fields splitted from location, indicating what fields to load/save */
+  /** Holds the names of the fields to lead/save: "key" + fields splitted from location */
   protected List<String> loadSaveFields = new ArrayList<String>() ;
 
   /** Fields to load as Query - same as {@link loadSaveFields} but without 'key' */
@@ -101,7 +101,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   protected boolean loadSaveAllFields = false ;
 
   /**
-   * Creates a new 
+   * Creates a new GoraStorage with implicit "*" fields to load/save.  
    * @param keyClassName
    * @param persistentClassName
    */
@@ -112,9 +112,9 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   /**
    * Creates a new GoraStorage and set the keyClass from the key class name.
    * @param keyClassName key class. Full name with package (org.apache....)
-   * @param persistentClassName persistent class. Full name with package 
+   * @param persistentClassName persistent class. Full name with package. 
    * @param fields comma separated fields to load/save | '*' for all.
-   *   '*' loads all fields from the persistent class.
+   *   '*' loads all fields from the persistent class to each tuple.
    *   '*' saves all fields of each tuple to persist (not mandatory all fields of the persistent class).
    */
   public GoraStorage(String keyClassName, String persistentClassName, String csvFields) {
@@ -131,7 +131,6 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       throw new RuntimeException(e);
     }
     
-
     // Precompute the set of fields for load and save
     
     // This dirty lines are needed for parse Fields :( We don't have a job configuration
@@ -156,7 +155,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       for(Field f: avroFields) {
         avroFieldsNames.add(f.name()) ;
       }
-      declaredConstructorFields.retainAll(avroFields) ;
+      declaredConstructorFields.retainAll(avroFieldsNames) ;
       this.setLoadQueryFields(declaredConstructorFields.toArray(new String[0])) ;
       
       // Populate the set with the fields that will be load/saved
@@ -930,11 +929,11 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // Do nothing
   }
 
-  public Set<String> getLoadSaveFields() {
+  public List<String> getLoadSaveFields() {
     return loadSaveFields;
   }
 
-  public void setLoadSaveFields(Set<String> loadSaveFields) {
+  public void setLoadSaveFields(List<String> loadSaveFields) {
     this.loadSaveFields = loadSaveFields;
   }
 
