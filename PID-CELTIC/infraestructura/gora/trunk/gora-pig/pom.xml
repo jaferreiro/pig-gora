@@ -35,15 +35,7 @@
         <testOutputDirectory>target/test-classes</testOutputDirectory>
         <testSourceDirectory>src/test/java</testSourceDirectory>
         <sourceDirectory>src/main/java</sourceDirectory>
-        <testResources>
-          <testResource>
-            <directory>${project.basedir}/src/test/conf</directory>
-            <includes>
-              <include>**/*</include>
-            </includes>
-            <!--targetPath>${project.basedir}/target/classes/</targetPath-->
-          </testResource>
-        </testResources>
+
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

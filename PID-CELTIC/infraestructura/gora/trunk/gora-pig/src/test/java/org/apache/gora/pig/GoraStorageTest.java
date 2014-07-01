@@ -12,6 +12,7 @@ import java.util.Properties;
 
 import junit.framework.Assert;
 
+import org.apache.gora.examples.generated.Metadata;
 import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
@@ -67,11 +68,32 @@ public class GoraStorageTest {
   @Before
 	public void setUp() throws Exception {
 	  WebPage w = dataStore.getBeanFactory().newPersistent() ;
+	  Metadata m ;
+	  
 	  w.setUrl("http://gora.apache.org") ;
 	  w.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
 	  w.addToParsedContent("elemento1") ;
     w.addToParsedContent("elemento2") ;
     w.putToOutlinks("k1", "v1") ;
+    m = new Metadata() ;
+    m.setVersion(3) ;
+    w.setMetadata(m) ;
+    
+    dataStore.put("key1", w) ;
+    
+    w.clear() ;
+    w.setUrl("http://www.google.com") ;
+    w.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
+    w.addToParsedContent("elemento7") ;
+    w.addToParsedContent("elemento15") ;
+    w.putToOutlinks("k7", "v7") ;
+    m = new Metadata() ;
+    m.setVersion(7) ;
+    w.setMetadata(m) ;
+    
+    dataStore.put("key7", w) ;
+    dataStore.flush() ;
+    dataStore.close() ;
 	}
 
   @After
@@ -89,14 +111,26 @@ public class GoraStorageTest {
 
     pigServer.setJobName("gora-pig test - load all fields");
     pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
-    pigServer.registerJar("target/lib/*.jar");
-    pigServer.registerQuery("textos = LOAD 'frases.txt' as (idioma:chararray, texto:chararray) ;");
-    pigServer.registerQuery("textos_normalizados = FOREACH textos GENERATE normalizar(texto,idioma) ;");
+    pigServer.registerQuery("paginas = LOAD '' using org.apache.gora.pig.GoraStorage (" +
+    		"'java.lang.String'," +
+    		"'org.apache.gora.examples.generated.WebPage'" +
+    		"'*') ;");
+    pigServer.registerQuery("resultado = FOREACH paginas GENERATE UPPER(url) as url, content, outlinks ;");
 
-    Iterator<Tuple> resultados = pigServer.openIterator("textos_normalizados");
+    Iterator<Tuple> resultados = pigServer.openIterator("resultado");
     Assert.assertTrue("Se esperaban resultados tras la ejecución en Pig, pero no se ha recibido ninguno", resultados.hasNext());
 
-    BufferedReader frasesEsperadas = new BufferedReader(new FileReader("target/test-classes/datos/esperado.txt"));
+    while (resultados.hasNext()) {
+      Tuple resultado = resultados.next();
+      for (Object c : resultado.getAll()) {
+        System.out.print(c) ;
+        System.out.print(", ") ;
+      }
+      System.out.println();
+    }
+    
+    
+/*    BufferedReader frasesEsperadas = new BufferedReader(new FileReader("target/test-classes/datos/esperado.txt"));
     try {
       while (resultados.hasNext()) {
         Tuple resultado = resultados.next();
@@ -107,6 +141,7 @@ public class GoraStorageTest {
     } finally {
       frasesEsperadas.close();
     }
+    */
   }
 
 }
