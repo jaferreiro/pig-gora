@@ -632,48 +632,48 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     switch (pigType) {
       case DataType.BAG: // Avro Array
         if (!avroType.equals(Type.ARRAY) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type ARRAY for "+fieldName+", got type " + avroType.name()) ;  
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig BAG with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         checkEqualSchema(pigFieldSchema.getSchema().getFields()[0], avroSchema.getElementType()) ;
         break ;
       case DataType.BOOLEAN:
         if (!avroType.equals(Type.BOOLEAN) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type BOOLEAN for "+fieldName+", got type " + avroType.name()) ;  
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig BOOLEAN with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.BYTEARRAY:
         if (!avroType.equals(Type.BYTES) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type BYTES for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig BYTEARRAY with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.CHARARRAY: // String
         if (!avroType.equals(Type.STRING) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type STRING for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig CHARARRAY with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break;
       case DataType.DOUBLE:
         if (!avroType.equals(Type.DOUBLE) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type DOUBLE for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig DOUBLE with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.FLOAT:
         if (!avroType.equals(Type.FLOAT) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type FLOAT for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig FLOAT with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.INTEGER: // Int or Enum
         if (!avroType.equals(Type.INT) && !avroType.equals(Type.ENUM) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type INT or ENUM for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig INTEGER with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.LONG:
         if (!avroType.equals(Type.LONG) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type LONG for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig LONG with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.MAP: // Avro Map
         if (!avroType.equals(Type.MAP) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type MAP for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig MAP with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.NULL: // Avro nullable??
         if(!avroType.equals(Type.NULL) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type NULL for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig NULL with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.TUPLE: // Avro Record
         if (!avroType.equals(Type.RECORD) && !checkUnionSchema(avroSchema, pigFieldSchema))
-          throw new IOException("Expected Avro type RECORD for "+fieldName+", got type " + avroType.name()) ;
+          throw new IOException("Can not convert field [" + fieldName + "] from Pig TUPLE(record) with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       default:
         throw new IOException("Unexpected Pig schema type " + DataType.genTypeToNameMap().get(pigType) + " for avro schema field " + avroSchema.getName() +": " + avroType.name()) ;
