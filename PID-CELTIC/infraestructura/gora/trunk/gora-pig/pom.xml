@@ -156,6 +156,19 @@
             <artifactId>hadoop-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>dk.brics.automaton</groupId>
+            <artifactId>automaton</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.antlr</groupId>
+            <artifactId>antlr-runtime</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
     </dependencies>
 
 </project>

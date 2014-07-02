@@ -93,7 +93,6 @@ public class GoraStorageTest {
     
     dataStore.put("key7", w) ;
     dataStore.flush() ;
-    dataStore.close() ;
 	}
 
   @After
@@ -111,9 +110,9 @@ public class GoraStorageTest {
 
     pigServer.setJobName("gora-pig test - load all fields");
     pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
-    pigServer.registerQuery("paginas = LOAD '' using org.apache.gora.pig.GoraStorage (" +
+    pigServer.registerQuery("paginas = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
     		"'java.lang.String'," +
-    		"'org.apache.gora.examples.generated.WebPage'" +
+    		"'org.apache.gora.examples.generated.WebPage'," +
     		"'*') ;");
     pigServer.registerQuery("resultado = FOREACH paginas GENERATE UPPER(url) as url, content, outlinks ;");
 
