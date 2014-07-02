@@ -113,34 +113,19 @@ public class GoraStorageTest {
     pigServer.registerQuery("paginas = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
     		"'java.lang.String'," +
     		"'org.apache.gora.examples.generated.WebPage'," +
-    		"'*') ;");
-    pigServer.registerQuery("resultado = FOREACH paginas GENERATE UPPER(url) as url, content, outlinks ;");
-
-    Iterator<Tuple> resultados = pigServer.openIterator("resultado");
-    Assert.assertTrue("Se esperaban resultados tras la ejecución en Pig, pero no se ha recibido ninguno", resultados.hasNext());
-
-    while (resultados.hasNext()) {
-      Tuple resultado = resultados.next();
-      for (Object c : resultado.getAll()) {
-        System.out.print(c) ;
-        System.out.print(", ") ;
-      }
-      System.out.println();
-    }
+    		"'*') ;",1);
+    pigServer.registerQuery("resultado = FOREACH paginas GENERATE key, UPPER(url) as url, content, outlinks," +
+    		"                                   {()} as parsedContent:{(chararray)}, () as metadata:(version:int, data:map[]) ;",2);
+    pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
+        "'java.lang.String'," +
+        "'org.apache.gora.examples.generated.WebPage'," +
+        "'*') ;",3);
     
-    
-/*    BufferedReader frasesEsperadas = new BufferedReader(new FileReader("target/test-classes/datos/esperado.txt"));
-    try {
-      while (resultados.hasNext()) {
-        Tuple resultado = resultados.next();
-        String fraseResultado = (String) resultado.get(0);
-        String fraseEsperada = frasesEsperadas.readLine();
-        Assert.assertEquals(fraseEsperada, fraseResultado);
-      }
-    } finally {
-      frasesEsperadas.close();
-    }
-    */
+    WebPage webpageUpper = dataStore.get("key1") ;
+    Assert.assertEquals("HTTP://GORA.APACHE.ORG", webpageUpper.getUrl().toString()) ;
+    webpageUpper = dataStore.get("key2") ;
+    Assert.assertEquals("HTTP://WWW.GOOGLE.COM", webpageUpper.getUrl().toString()) ;
   }
 
 }
+ 
