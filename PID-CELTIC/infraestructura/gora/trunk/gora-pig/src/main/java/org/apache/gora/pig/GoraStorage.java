@@ -633,7 +633,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.BAG: // Avro Array
         if (!avroType.equals(Type.ARRAY) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig BAG with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
-        checkEqualSchema(pigFieldSchema.getSchema().getFields()[0], avroSchema.getElementType()) ;
+        checkEqualSchema(pigFieldSchema.getSchema().getFields()[0].getSchema().getFields()[0], avroSchema.getElementType()) ;
         break ;
       case DataType.BOOLEAN:
         if (!avroType.equals(Type.BOOLEAN) && !checkUnionSchema(avroSchema, pigFieldSchema))
@@ -722,6 +722,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     
     // Parse de the schema from string stored in properties object
     this.writeResourceSchema = new ResourceSchema(Utils.getSchemaFromString(strSchema)) ;
+    if (LOG.isTraceEnabled()) LOG.trace(this.writeResourceSchema.toString()) ;
     this.writeResourceFieldSchemaMap = new HashMap<String, ResourceFieldSchemaWithIndex>() ;
     int index = 0 ;
     for (ResourceFieldSchema fieldSchema : this.writeResourceSchema.getFields()) {
@@ -745,7 +746,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     }
 
     for (String fieldName : this.loadQueryFields) {
-      
+      LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
       persistentObj.put(persistentObj.getFieldIndex(fieldName), // name -> index
                         this.writeField(persistentSchema.getField(fieldName).schema(),
                                         this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
@@ -809,6 +810,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         return persistentMap ;
       case DataType.BAG:
         Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
+        LOG.trace("{}", field.getSchema().getFields()[0]) ;
+        LOG.trace("{}", field.getSchema().getFields()[0].getType()) ;
         for (Object pigArrayElement: (DataBag)pigData) {
           if (avroSchema.getElementType().getType() == Type.RECORD) {
             // If element type is record, the mapping Persistent->PigType deletes one nested tuple:
@@ -816,7 +819,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
             persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
           } else {
             // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
-            persistentArray.add(this.writeField(avroSchema.getElementType(), (field.getSchema().getFields()[0]).getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
+            persistentArray.add(this.writeField(avroSchema.getElementType(), (field.getSchema().getFields()[0]), ((Tuple)pigArrayElement).get(0))) ;
           }
         }
         return persistentArray ;
@@ -854,13 +857,12 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public void cleanupOnFailure(String location, Job job) throws IOException {
-    // Do nothing 
     LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage cleanupOnFailure() {}", this);    
   }
 
   @Override
   public void cleanupOnSuccess(String location, Job job) throws IOException {
-    // Do nothing
+    if (dataStore != null) dataStore.flush() ;
   }
 
   public boolean isLoadSaveAllFields() {
