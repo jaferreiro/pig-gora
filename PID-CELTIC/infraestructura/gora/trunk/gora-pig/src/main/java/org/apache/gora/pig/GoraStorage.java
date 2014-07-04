@@ -777,7 +777,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // If data is null, return null (check if avro schema is right)
     if (pigData == null) {
       if (avroSchema.getType() != Type.UNION && avroSchema.getType() != Type.NULL) {
-        throw new IOException("Tuple field is null, but Avro Schema is not union nor null") ;
+        throw new IOException("Tuple field " + field.getName() + " is null, but Avro Schema is not union nor null") ;
       } else {
         return null ;
       }
@@ -794,24 +794,27 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.LONG:
       case DataType.BOOLEAN:
       case DataType.NULL: return (Object)pigData ;
+      
       case DataType.CHARARRAY: return new Utf8((String)pigData) ;
+      
       case DataType.INTEGER:
           if (avroSchema.getType() == Type.ENUM) {
             AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
           }else{
             return (Integer)pigData ;
           }
+          
       case DataType.BYTEARRAY: return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
-      case DataType.MAP:
+      
+      case DataType.MAP: // Pig Map -> Avro Map
         HashMap<Utf8,Object> persistentMap = new HashMap<Utf8,Object>() ;
         for (Map.Entry<String, Object> pigMapElement: ((Map<String,Object>)pigData).entrySet()) {
           persistentMap.put(new Utf8(pigMapElement.getKey()), this.writeField(avroSchema.getValueType(),field.getSchema().getFields()[0], pigMapElement.getValue())) ;
         }
         return persistentMap ;
-      case DataType.BAG:
+        
+      case DataType.BAG: // Pig Bag -> Avro Array
         Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
-        LOG.trace("{}", field.getSchema().getFields()[0]) ;
-        LOG.trace("{}", field.getSchema().getFields()[0].getType()) ;
         for (Object pigArrayElement: (DataBag)pigData) {
           if (avroSchema.getElementType().getType() == Type.RECORD) {
             // If element type is record, the mapping Persistent->PigType deletes one nested tuple:
@@ -819,11 +822,12 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
             persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
           } else {
             // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
-            persistentArray.add(this.writeField(avroSchema.getElementType(), (field.getSchema().getFields()[0]), ((Tuple)pigArrayElement).get(0))) ;
+            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
           }
         }
         return persistentArray ;
-      case DataType.TUPLE:
+        
+      case DataType.TUPLE: // Pig Tuple -> Avro Record
         try {
           PersistentBase persistentRecord = (PersistentBase) Class.forName(avroSchema.getFullName()).newInstance();
           
@@ -843,6 +847,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         } catch (ClassNotFoundException e) {
           throw new IOException(e) ;
         }
+        
       default:
         throw new IOException("Unexpected field " + field.getName() +" with Pig type "+ DataType.genTypeToNameMap().get(field.getType())) ;
     }
