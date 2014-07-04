@@ -106,7 +106,6 @@ public class GoraStorageTest {
 
   @Test
   public void testLoadAllFields() throws IOException {
-    FileSystem fs = FileSystem.get(configuration);
 
     pigServer.setJobName("gora-pig test - load all fields");
     pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
@@ -115,16 +114,35 @@ public class GoraStorageTest {
     		"'org.apache.gora.examples.generated.WebPage'," +
     		"'*') ;",1);
     pigServer.registerQuery("resultado = FOREACH paginas GENERATE key, UPPER(url) as url, content, outlinks," +
-    		"                                   {()} as parsedContent:{(chararray)}, () as metadata:(version:int, data:map[]) ;",2);
+    		"                                   {} as parsedContent:{(chararray)}, (1, []) as metadata:(version:int, data:map[]) ;",2);
     pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
         "'*') ;",3);
     
     WebPage webpageUpper = dataStore.get("key1") ;
-    Assert.assertEquals("HTTP://GORA.APACHE.ORG", webpageUpper.getUrl().toString()) ;
-    webpageUpper = dataStore.get("key2") ;
-    Assert.assertEquals("HTTP://WWW.GOOGLE.COM", webpageUpper.getUrl().toString()) ;
+    Assert.assertNotNull("Expected record with key 'key1' not found", webpageUpper) ;
+    
+    WebPage expected = dataStore.getBeanFactory().newPersistent() ;
+    expected.setUrl("HTTP://GORA.APACHE.ORG") ;
+    expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
+    expected.putToOutlinks("k1", "v1") ;
+    Metadata m = new Metadata() ;
+    m.setVersion(1) ;
+    expected.setMetadata(m) ;
+
+    Assert.assertEquals(expected, webpageUpper) ;
+    
+    webpageUpper = dataStore.get("key7") ;
+    Assert.assertNotNull("Expected record with key 'key7' not found", webpageUpper) ;
+    expected = dataStore.getBeanFactory().newPersistent() ;
+    expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
+    expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
+    expected.putToOutlinks("k7", "v7") ;
+    m = new Metadata() ;
+    m.setVersion(7) ;
+    expected.setMetadata(m) ;
+    Assert.assertEquals(expected, webpageUpper) ;
   }
 
 }
