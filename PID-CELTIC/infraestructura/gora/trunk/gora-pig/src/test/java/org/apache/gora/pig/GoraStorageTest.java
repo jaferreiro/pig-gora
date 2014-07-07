@@ -67,7 +67,11 @@ public class GoraStorageTest {
 
   @Before
 	public void setUp() throws Exception {
-	  WebPage w = dataStore.getBeanFactory().newPersistent() ;
+
+    dataStore.delete("key1") ;
+    dataStore.delete("key2") ;
+    
+    WebPage w = dataStore.getBeanFactory().newPersistent() ;
 	  Metadata m ;
 	  
 	  w.setUrl("http://gora.apache.org") ;
@@ -99,13 +103,59 @@ public class GoraStorageTest {
   public void tearDown() throws Exception {
   }
 
+  /**
+   * Test loading/saving a subset of the fields defined in the constructor
+   */
   @Test
-  public void testLoadSubset() {
+  public void testLoadSaveSubset() throws IOException {
 
+    pigServer.setJobName("gora-pig test - load all fields");
+    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerQuery("paginas = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
+        "'java.lang.String'," +
+        "'org.apache.gora.examples.generated.WebPage'," +
+        "'url, content') ;",1);
+    pigServer.registerQuery("resultado = FOREACH paginas GENERATE key, UPPER(url) as url, content ;",2);
+    pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
+        "'java.lang.String'," +
+        "'org.apache.gora.examples.generated.WebPage'," +
+        "'url') ;",3);
+    
+    WebPage webpageUpper = dataStore.get("key1") ;
+    Assert.assertNotNull("Expected record with key 'key1' not found", webpageUpper) ;
+    
+    WebPage expected = dataStore.getBeanFactory().newPersistent() ;
+    expected.setUrl("HTTP://GORA.APACHE.ORG") ;
+    expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
+    expected.putToOutlinks("k1", "v1") ;
+    expected.addToParsedContent("elemento1") ;
+    expected.addToParsedContent("elemento2") ;
+    Metadata m = new Metadata() ;
+    m.setVersion(3) ;
+    expected.setMetadata(m) ;
+
+    Assert.assertEquals(expected, webpageUpper) ;
+    
+    webpageUpper = dataStore.get("key7") ;
+    Assert.assertNotNull("Expected record with key 'key7' not found", webpageUpper) ;
+    expected = dataStore.getBeanFactory().newPersistent() ;
+    expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
+    expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
+    expected.putToOutlinks("k7", "v7") ;
+    expected.addToParsedContent("elemento7") ;
+    expected.addToParsedContent("elemento15") ;
+    m = new Metadata() ;
+    m.setVersion(7) ;
+    expected.setMetadata(m) ;
+    Assert.assertEquals(expected, webpageUpper) ;
+    
   }
 
+  /**
+   * Tests loading/saving all fields with '*'
+   */
   @Test
-  public void testLoadAllFields() throws IOException {
+  public void testLoadSaveAllFields() throws IOException {
 
     pigServer.setJobName("gora-pig test - load all fields");
     pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
@@ -127,6 +177,8 @@ public class GoraStorageTest {
     expected.setUrl("HTTP://GORA.APACHE.ORG") ;
     expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
     expected.putToOutlinks("k1", "v1") ;
+    expected.addToParsedContent("elemento1") ;
+    expected.addToParsedContent("elemento2") ;
     Metadata m = new Metadata() ;
     m.setVersion(1) ;
     expected.setMetadata(m) ;
@@ -139,8 +191,10 @@ public class GoraStorageTest {
     expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
     expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
     expected.putToOutlinks("k7", "v7") ;
+    expected.addToParsedContent("elemento7") ;
+    expected.addToParsedContent("elemento15") ;
     m = new Metadata() ;
-    m.setVersion(7) ;
+    m.setVersion(1) ;
     expected.setMetadata(m) ;
     Assert.assertEquals(expected, webpageUpper) ;
   }
