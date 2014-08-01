@@ -282,25 +282,8 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         throw new IOException("Unexpected delete type [" + this.deleteType.toString() + "]. Row "+t.get+" ignored") ;
     }
 
-    
 
-    
-    
-    
-    
-    
-    
-    
-    
-    PersistentBase persistentObj ;  
-    
-    try {
-       persistentObj = this.persistentClass.newInstance() ;
-    } catch (InstantiationException e) {
-      throw new IOException(e) ;
-    } catch (IllegalAccessException e) {
-      throw new IOException(e) ;
-    }
+    // FROM OLD CODE. CHECK IF NEEDED OR NOT.
 
     for (String fieldName : this.loadQueryFields) {
       LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
@@ -438,26 +421,40 @@ public class GoraDeleteStorage implements StoreFuncInterface {
    * ("clave1", ("elem1", "elem2"))
    *
    * (key:chararray, outlinks:bag{(chararray)}
-   * ("clave1", {("elem1", "elem2")}
+   * ("clave1", {("elem1"), ("elem2")}
    * 
    * @param persistent Persistent instance that will hold deleted for maps
    * @param fieldName name of the field to add to the deletes
    * @param pigField field with the element's name to delete
    */
   private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws Exception {
-    StatefulHashMap hashMap = (StatefulHashMap) persistent.get(persistent.getFieldIndex(fieldName)) ;
+    @SuppressWarnings("rawtypes")
+    StatefulHashMap deleteHashMap = (StatefulHashMap) persistent.get(persistent.getFieldIndex(fieldName)) ;
     switch (pigFieldSchema.getType()) {
       case DataType.BAG:
+        DataBag bag = DataType.toBag(pigField) ;
+        for(Tuple t: bag){
+          String deleteElementKey = (String) t.get(0) ;
+          deleteHashMap.remove(deleteElementKey) ;
+        }
         break ;
         
       case DataType.MAP:
+        Map<String,Object> map = DataType.toMap(pigField) ;
+        for (String mapKey: map.keySet()) {
+          deleteHashMap.remove(mapKey) ;
+        }
         break ;
         
       case DataType.TUPLE:
+        Tuple tuple = DataType.toTuple(pigField) ;
+        for (Object elementKey: tuple) {
+          deleteHashMap.remove((String) elementKey) ;
+        }
         break ;
         
       default:
-        throw new Exception("Unexpected pig field [" + pigField + "] of type " + DataType.genTypeToNameMap().get(field.getType()) +" when trying to delete map values.") ;
+        throw new Exception("Unexpected pig field [" + pigField + "] of type " + DataType.genTypeToNameMap().get(pigFieldSchema.getType()) +" when trying to delete map values.") ;
     }
   }
   
