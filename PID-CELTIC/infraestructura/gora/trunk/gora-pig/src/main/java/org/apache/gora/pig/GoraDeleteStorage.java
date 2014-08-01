@@ -1,0 +1,480 @@
+package org.apache.gora.pig;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
+
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.Field;
+import org.apache.avro.Schema.Type;
+import org.apache.avro.generic.GenericData.Array;
+import org.apache.avro.util.Utf8;
+import org.apache.gora.mapreduce.GoraInputFormat;
+import org.apache.gora.mapreduce.GoraOutputFormat;
+import org.apache.gora.mapreduce.GoraOutputFormatFactory;
+import org.apache.gora.mapreduce.GoraRecordReader;
+import org.apache.gora.mapreduce.GoraRecordWriter;
+import org.apache.gora.persistency.StatefulHashMap;
+import org.apache.gora.persistency.impl.PersistentBase;
+import org.apache.gora.store.DataStore;
+import org.apache.gora.store.DataStoreFactory;
+import org.apache.gora.util.AvroUtils;
+import org.apache.gora.util.GoraException;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.OutputFormat;
+import org.apache.hadoop.mapreduce.RecordWriter;
+import org.apache.pig.ResourceSchema;
+import org.apache.pig.ResourceSchema.ResourceFieldSchema;
+import org.apache.pig.StoreFuncInterface;
+import org.apache.pig.backend.hadoop.executionengine.mapReduceLayer.PigSplit;
+import org.apache.pig.data.DataBag;
+import org.apache.pig.data.DataByteArray;
+import org.apache.pig.data.DataType;
+import org.apache.pig.data.Tuple;
+import org.apache.pig.impl.util.UDFContext;
+import org.apache.pig.impl.util.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class GoraDeleteStorage implements StoreFuncInterface {
+
+  public static final Logger LOG = LoggerFactory.getLogger(GoraDeleteStorage.class);
+
+  private enum DeleteType { ROWS, VALUES }  
+  
+  /**
+   * Key in UDFContext properties that marks config is set (set at backend nodes)  
+   */
+  private static final String GORA_CONFIG_SET = "gorastorage.config.set" ;
+  private static final String GORA_STORE_SCHEMA = "gorastorage.pig.store.schema" ;
+
+  protected Job job;
+  protected JobConf localJobConf ; 
+  protected String udfcSignature = null ;
+  
+  protected String keyClassName ;
+  protected String persistentClassName ;
+  protected Class<?> keyClass;
+  protected Class<? extends PersistentBase> persistentClass;
+  protected Schema persistentSchema ;
+  private   DataStore<?, ? extends PersistentBase> dataStore ;
+  protected PigGoraOutputFormat<?,? extends PersistentBase> outputFormat ;
+  protected GoraRecordWriter<?,? extends PersistentBase> writer ;
+  
+  protected DeleteType deleteType = null ;
+
+  protected ResourceSchema writeResourceSchema ;
+  private   Map<String, ResourceFieldSchemaWithIndex> writeResourceFieldSchemaMap ;
+  
+  /**
+   * Creates a new GoraDeleteStorage and sets the keyClass from the key class name.
+   * @param keyClassName key class. Full name with package (org.apache....)
+   * @param persistentClassName persistent class. Full name with package. 
+   * @param deleteType 'rows' expect tuples with schema (key:chararray) with the rows to delete <br>
+   *                   'values' used to delete elements of map at level-0. expect tuples with schema:
+   *                   <pre>
+   *                   schema: (key:chararray, outlinks:map[chararray])
+   *                   relation: ("key1",["elem1"#"val1","key2"#"val2"]
+   *
+   *                   schema: (key:chararray, outlinks:tuple(chararray, chararray, ...)
+   *                   relation: ("clave1", ("elem1", "elem2"))
+   * 
+   *                   schema: (key:chararray, outlinks:bag{(chararray)}
+   *                   relation: ("clave1", {("elem1", "elem2")}
+   *                   </pre>
+   * @throws IllegalAccessException 
+   * @throws InstantiationException 
+   */
+  public GoraDeleteStorage(String keyClassName, String persistentClassName, String deleteType) throws InstantiationException, IllegalAccessException {
+    super();
+    
+    this.keyClassName = keyClassName ;
+    this.persistentClassName = persistentClassName ;
+    try {
+      this.keyClass = Class.forName(keyClassName);
+      Class<?> persistentClazz = Class.forName(persistentClassName);
+      this.persistentClass = persistentClazz.asSubclass(PersistentBase.class);
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
+
+    this.persistentSchema = this.persistentClass.newInstance().getSchema() ;
+    this.deleteType = DeleteType.valueOf(deleteType.toUpperCase());
+  }
+
+  /**
+   * Returns the internal DataStore for <code>&lt;keyClass,persistentClass&gt;</code>
+   * using configuration set in job (from setLocation()).
+   * Creates one datastore at first call.
+   * @return DataStore for &lt;keyClass,persistentClass&gt;
+   * @throws GoraException on DataStore creation error.
+   */
+  @SuppressWarnings("rawtypes")
+  protected DataStore getDataStore() throws GoraException {
+    if (this.localJobConf == null) {
+      throw new GoraException("Calling getDataStore(). setStoreLocation() must be called first!") ;
+    }
+    if (this.dataStore == null) {
+      this.dataStore = DataStoreFactory.getDataStore(this.keyClass, this.persistentClass, this.localJobConf) ;
+    }
+    return this.dataStore ;
+  }
+  
+  /**
+   * Returns UDFProperties based on <code>udfcSignature</code>, <code>keyClassName</code> and <code>persistentClassName</code>.
+   */
+  private Properties getUDFProperties() {
+      return UDFContext.getUDFContext().getUDFProperties(this.getClass(), new String[] {this.udfcSignature,this.keyClassName,this.persistentClassName});
+  }
+  
+  private JobConf initializeLocalJobConfig(Job job) {
+    Properties udfProps = getUDFProperties();
+    Configuration jobConf = job.getConfiguration();
+    JobConf localConf = new JobConf(jobConf); // localConf starts as a copy of jobConf
+    if (udfProps.containsKey(GORA_CONFIG_SET)) {
+      // Already configured (maybe from frontend to backend)
+      for (Entry<Object, Object> entry : udfProps.entrySet()) {
+        localConf.set((String) entry.getKey(), (String) entry.getValue());
+      }
+    } else {
+      // Not configured. We load to localConf the configuration and put it in udfProps
+      Configuration goraConf = new Configuration();
+      for (Entry<String, String> entry : goraConf) {
+        // JobConf may have some conf overriding ones in hbase-site.xml
+        // So only copy hbase config not in job config to UDFContext
+        // Also avoids copying core-default.xml and core-site.xml
+        // props in hbaseConf to UDFContext which would be redundant.
+        if (localConf.get(entry.getKey()) == null) {
+          udfProps.setProperty(entry.getKey(), entry.getValue());
+          localConf.set(entry.getKey(), entry.getValue());
+        }
+      }
+      udfProps.setProperty(GORA_CONFIG_SET, "true");
+    }
+    return localConf;
+  }
+  
+  @Override
+  public String relToAbsPathForStoreLocation(String location, Path curDir)
+      throws IOException {
+    // Do nothing
+    return location ;
+  }
+
+  @Override
+  @SuppressWarnings({ "rawtypes", "unchecked" })
+  public OutputFormat getOutputFormat() throws IOException {
+    try {
+      this.outputFormat = GoraOutputFormatFactory.createInstance(PigGoraOutputFormat.class, this.keyClass, this.persistentClass);
+    } catch (Exception e) {
+      throw new IOException(e) ;
+    }
+    GoraOutputFormat.setOutput(this.job, this.getDataStore(), false) ;
+    this.outputFormat.setConf(this.job.getConfiguration()) ;
+    return this.outputFormat ; 
+  }
+
+  @Override
+  public void setStoreLocation(String location, Job job) throws IOException {
+    this.job = job ;
+    this.localJobConf = this.initializeLocalJobConfig(job) ;
+  }
+
+  @Override
+  /**
+   * Checks that the Pig schema has at least the field "key" with schema chararray, mandatory for ROWS and VALUES delete types.
+   * 
+   * Sets UDFContext property GORA_STORE_SCHEMA with the schema to send it to the backend.
+   */
+  public void checkSchema(ResourceSchema s) throws IOException {
+    List<String> pigFieldSchemasNames = new ArrayList<String>(Arrays.asList(s.fieldNames())) ;
+    if ( !pigFieldSchemasNames.contains("key") ) {
+      throw new IOException("Expected a field called \"key\" but not found.") ;
+    }
+    
+    for (ResourceFieldSchema fieldSchema: s.getFields()) {
+      if (fieldSchema.getName().equals("key") &&
+          fieldSchema.getType() != DataType.CHARARRAY )
+      {
+        throw new IOException("Expected field \"key\" with schema chararray, but found schema " + DataType.findTypeName(fieldSchema.getType()) + ".") ;
+      }
+    }
+    
+    // Save the schema to UDFContext to use it on backend when writing data
+    getUDFProperties().setProperty(GoraDeleteStorage.GORA_STORE_SCHEMA, s.toString()) ;
+  }
+
+  @Override
+  @SuppressWarnings({ "rawtypes", "unchecked" })
+  public void prepareToWrite(RecordWriter writer) throws IOException {
+    this.writer = (GoraRecordWriter<?,? extends PersistentBase>) writer ;
+    
+    // Get the schema of data to write from UDFContext (coming from frontend checkSchema())
+    String strSchema = getUDFProperties().getProperty(GoraDeleteStorage.GORA_STORE_SCHEMA) ;
+    if (strSchema == null) {
+      throw new IOException("Could not find schema in UDF context. Should have been set in checkSchema() in frontend.") ;
+    }
+    
+    // Parse de the schema from string stored in properties object
+    this.writeResourceSchema = new ResourceSchema(Utils.getSchemaFromString(strSchema)) ;
+    if (LOG.isTraceEnabled()) LOG.trace(this.writeResourceSchema.toString()) ;
+    this.writeResourceFieldSchemaMap = new HashMap<String, ResourceFieldSchemaWithIndex>() ;
+    int index = 0 ;
+    for (ResourceFieldSchema fieldSchema : this.writeResourceSchema.getFields()) {
+      this.writeResourceFieldSchemaMap.put(fieldSchema.getName(),
+                                           new ResourceFieldSchemaWithIndex(fieldSchema, index++)) ;
+    }
+
+  }
+
+  /**
+   * If delete type = ROWS => deletes all the rows with the given keys
+   * If delete type = VALUES => for all fields with a name related to avro map, deletes the elements
+   */
+  @SuppressWarnings("unchecked")
+  @Override
+  public void putNext(Tuple t) throws IOException {
+    if (!this.writeResourceFieldSchemaMap.containsKey("key")) {
+      throw new IOException("Expected field \"key\" not found in tuple " + t.toString()) ;
+    }
+    
+    String key = (String) t.get(this.writeResourceFieldSchemaMap.get("key").getIndex()) ;
+    
+    switch (this.deleteType) {
+      case ROWS :
+        this.getDataStore().delete(key) ;
+        break ;
+        
+      case VALUES :
+        
+        PersistentBase persistentWithDeletes ;  
+        try {
+          persistentWithDeletes = this.persistentClass.newInstance() ;
+        } catch (InstantiationException e) {
+          throw new IOException(e) ;
+        } catch (IllegalAccessException e) {
+          throw new IOException(e) ;
+        }
+        
+        // Find the fields that are maps
+        for (Entry<String,ResourceFieldSchemaWithIndex> entry: this.writeResourceFieldSchemaMap.entrySet()) {
+          String fieldName = entry.getKey() ;
+          Field avroField = this.persistentSchema.getField(fieldName) ;
+          if (avroFieldIsMap(avroField)) {
+            setDeletes(persistentWithDeletes, fieldName, t.get(entry.getValue().getIndex()), entry.getValue().getResourceFieldSchema()) ;
+          }
+          
+          
+        }
+        
+        break ;
+        
+      default:
+        throw new IOException("Unexpected delete type [" + this.deleteType.toString() + "]. Row "+t.get+" ignored") ;
+    }
+
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    PersistentBase persistentObj ;  
+    
+    try {
+       persistentObj = this.persistentClass.newInstance() ;
+    } catch (InstantiationException e) {
+      throw new IOException(e) ;
+    } catch (IllegalAccessException e) {
+      throw new IOException(e) ;
+    }
+
+    for (String fieldName : this.loadQueryFields) {
+      LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
+      persistentObj.put(persistentObj.getFieldIndex(fieldName), // name -> index
+                        this.writeField(persistentSchema.getField(fieldName).schema(),
+                                        this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
+                                        t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex()))) ;
+    
+    }
+
+    try {
+      ((GoraRecordWriter<Object,PersistentBase>) this.writer).write(t.get(0), (PersistentBase) persistentObj) ;
+    } catch (InterruptedException e) {
+      throw new IOException(e) ;
+    }
+
+  }
+
+  /**
+   * Converts one pig field data to PersistentBase Data.
+   * 
+   * @param avroSchema PersistentBase schema used to create new nested records
+   * @param field Pig schema of the field being converted
+   * @param pigData Pig data relative to the schema
+   * @return PersistentBase data
+   * @throws IOException
+   */
+  @SuppressWarnings("unchecked")
+  private Object writeField(Schema avroSchema, ResourceFieldSchema field, Object pigData) throws IOException {
+
+    // If data is null, return null (check if avro schema is right)
+    if (pigData == null) {
+      if (avroSchema.getType() != Type.UNION && avroSchema.getType() != Type.NULL) {
+        throw new IOException("Tuple field " + field.getName() + " is null, but Avro Schema is not union nor null") ;
+      } else {
+        return null ;
+      }
+    }
+    
+    // If avroSchema is union, it will not be the null field, so select the proper one
+    if (avroSchema.getType() == Type.UNION) {
+      avroSchema = avroSchema.getTypes().get(1) ;
+    }
+    
+    switch(field.getType()) {
+      case DataType.DOUBLE:
+      case DataType.FLOAT:
+      case DataType.LONG:
+      case DataType.BOOLEAN:
+      case DataType.NULL: return (Object)pigData ;
+      
+      case DataType.CHARARRAY: return new Utf8((String)pigData) ;
+      
+      case DataType.INTEGER:
+          if (avroSchema.getType() == Type.ENUM) {
+            AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
+          }else{
+            return (Integer)pigData ;
+          }
+          
+      case DataType.BYTEARRAY: return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
+      
+      case DataType.MAP: // Pig Map -> Avro Map
+        HashMap<Utf8,Object> persistentMap = new HashMap<Utf8,Object>() ;
+        for (Map.Entry<String, Object> pigMapElement: ((Map<String,Object>)pigData).entrySet()) {
+          persistentMap.put(new Utf8(pigMapElement.getKey()), this.writeField(avroSchema.getValueType(),field.getSchema().getFields()[0], pigMapElement.getValue())) ;
+        }
+        return persistentMap ;
+        
+      case DataType.BAG: // Pig Bag -> Avro Array
+        Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
+        for (Object pigArrayElement: (DataBag)pigData) {
+          if (avroSchema.getElementType().getType() == Type.RECORD) {
+            // If element type is record, the mapping Persistent->PigType deletes one nested tuple:
+            // We want the map as: map((a1,a2,a3), (b1,b2,b3),...) instead of map(((a1,a2,a3)), ((b1,b2,b3)), ...)
+            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
+          } else {
+            // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
+            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
+          }
+        }
+        return persistentArray ;
+        
+      case DataType.TUPLE: // Pig Tuple -> Avro Record
+        try {
+          PersistentBase persistentRecord = (PersistentBase) Class.forName(avroSchema.getFullName()).newInstance();
+          
+          ResourceFieldSchema[] tupleFieldSchemas = field.getSchema().getFields() ;
+          
+          for (int i=0; i<tupleFieldSchemas.length; i++) {
+            persistentRecord.put(persistentRecord.getFieldIndex(tupleFieldSchemas[i].getName()),
+                this.writeField(avroSchema.getField(tupleFieldSchemas[i].getName()).schema(),
+                                tupleFieldSchemas[i],
+                                ((Tuple)pigData).get(i))) ;
+          }
+          return persistentRecord ;
+        } catch (InstantiationException e) {
+          throw new IOException(e) ;
+        } catch (IllegalAccessException e) {
+          throw new IOException(e) ;
+        } catch (ClassNotFoundException e) {
+          throw new IOException(e) ;
+        }
+        
+      default:
+        throw new IOException("Unexpected field " + field.getName() +" with Pig type "+ DataType.genTypeToNameMap().get(field.getType())) ;
+    }
+    
+  }
+
+  /**
+   * Checks if an avro field is a map or if it is an union with a map 
+   * @param field
+   * @return
+   */
+  private boolean avroFieldIsMap(Field field) {
+    if (field.schema().getType() == Type.MAP) return true ;
+    if (field.schema().getType() == Type.UNION) {
+      for (Schema unionFieldSchema: field.schema().getTypes()) {
+        if (unionFieldSchema.getType() == Type.MAP) return true ;
+      }
+    }
+    return false ;
+  }
+  
+  /**
+   * Given a persistent instance to hold the deletes and the field name of the map to add deletes to, adds
+   * all the elements listed in the pig field.
+   * The format of the pig field can be:
+   * 
+   * (key:chararray, outlinks:map[chararray])
+   * ("clave1",["elem1"#"val1","elem2"#"val2"])
+   *
+   * (key:chararray, outlinks:tuple(chararray, chararray, ...)
+   * ("clave1", ("elem1", "elem2"))
+   *
+   * (key:chararray, outlinks:bag{(chararray)}
+   * ("clave1", {("elem1", "elem2")}
+   * 
+   * @param persistent Persistent instance that will hold deleted for maps
+   * @param fieldName name of the field to add to the deletes
+   * @param pigField field with the element's name to delete
+   */
+  private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws Exception {
+    StatefulHashMap hashMap = (StatefulHashMap) persistent.get(persistent.getFieldIndex(fieldName)) ;
+    switch (pigFieldSchema.getType()) {
+      case DataType.BAG:
+        break ;
+        
+      case DataType.MAP:
+        break ;
+        
+      case DataType.TUPLE:
+        break ;
+        
+      default:
+        throw new Exception("Unexpected pig field [" + pigField + "] of type " + DataType.genTypeToNameMap().get(field.getType()) +" when trying to delete map values.") ;
+    }
+  }
+  
+  @Override
+  public void setStoreFuncUDFContextSignature(String signature) {
+    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreFuncUDFContextSignature() {}", this);    
+    this.udfcSignature = signature ;
+  }
+
+  @Override
+  public void cleanupOnFailure(String location, Job job) throws IOException {
+    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage cleanupOnFailure() {}", this);    
+  }
+
+  @Override
+  public void cleanupOnSuccess(String location, Job job) throws IOException {
+    if (dataStore != null) dataStore.flush() ;
+  }
+  
+}
