@@ -1,13 +1,8 @@
 package org.apache.gora.pig;
 
-import static org.junit.Assert.*;
-
-import java.io.BufferedReader;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Iterator;
 import java.util.Properties;
 
 import junit.framework.Assert;
@@ -17,13 +12,9 @@ import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.pig.ExecType;
-import org.apache.pig.FuncSpec;
 import org.apache.pig.PigServer;
-import org.apache.pig.data.Tuple;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -69,7 +60,7 @@ public class GoraStorageTest {
 	public void setUp() throws Exception {
 
     dataStore.delete("key1") ;
-    dataStore.delete("key2") ;
+    dataStore.delete("key7") ;
     
     WebPage w = dataStore.getBeanFactory().newPersistent() ;
 	  Metadata m ;
@@ -199,5 +190,22 @@ public class GoraStorageTest {
     Assert.assertEquals(expected, webpageUpper) ;
   }
 
+  @Test
+  public void testDeleteRows() throws IOException {
+    pigServer.setJobName("gora-pig test - delete rows");
+    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerQuery("delete_rows = FOREACH paginas GENERATE key, UPPER(url) as url, content, outlinks," +
+        "                                   {} as parsedContent:{(chararray)}, (1, []) as metadata:(version:int, data:map[]) ;",2);
+    pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
+        "'java.lang.String'," +
+        "'org.apache.gora.examples.generated.WebPage'," +
+        "'*') ;",3);
+    
+  }
+  
+  @Test
+  public void testDeleteMapValues() throws IOException {
+    
+  }
 }
  
