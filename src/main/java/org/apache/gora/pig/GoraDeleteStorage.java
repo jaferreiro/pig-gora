@@ -1,7 +1,6 @@
 package org.apache.gora.pig;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -13,18 +12,13 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.Schema.Type;
-import org.apache.avro.generic.GenericData.Array;
-import org.apache.avro.util.Utf8;
-import org.apache.gora.mapreduce.GoraInputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
-import org.apache.gora.mapreduce.GoraRecordReader;
 import org.apache.gora.mapreduce.GoraRecordWriter;
 import org.apache.gora.persistency.StatefulHashMap;
 import org.apache.gora.persistency.impl.PersistentBase;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
-import org.apache.gora.util.AvroUtils;
 import org.apache.gora.util.GoraException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -35,9 +29,8 @@ import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.pig.ResourceSchema;
 import org.apache.pig.ResourceSchema.ResourceFieldSchema;
 import org.apache.pig.StoreFuncInterface;
-import org.apache.pig.backend.hadoop.executionengine.mapReduceLayer.PigSplit;
+import org.apache.pig.backend.executionengine.ExecException;
 import org.apache.pig.data.DataBag;
-import org.apache.pig.data.DataByteArray;
 import org.apache.pig.data.DataType;
 import org.apache.pig.data.Tuple;
 import org.apache.pig.impl.util.UDFContext;
@@ -251,7 +244,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
     
     switch (this.deleteType) {
       case ROWS :
-        this.getDataStore().delete(key) ;
+        ((GoraRecordWriter<Object,PersistentBase>) this.writer).delete(key) ;
         break ;
         
       case VALUES :
@@ -270,128 +263,25 @@ public class GoraDeleteStorage implements StoreFuncInterface {
           String fieldName = entry.getKey() ;
           Field avroField = this.persistentSchema.getField(fieldName) ;
           if (avroFieldIsMap(avroField)) {
-            setDeletes(persistentWithDeletes, fieldName, t.get(entry.getValue().getIndex()), entry.getValue().getResourceFieldSchema()) ;
+            try {
+              setDeletes(persistentWithDeletes, fieldName, t.get(entry.getValue().getIndex()), entry.getValue().getResourceFieldSchema()) ;
+            } catch (Exception e) {
+              throw new IOException(e) ;
+            }
           }
-          
-          
+        }
+
+        try {
+          ((GoraRecordWriter<Object,PersistentBase>) this.writer).write(key, (PersistentBase) persistentWithDeletes) ;
+        } catch (InterruptedException e) {
+          throw new IOException(e) ;
         }
         
         break ;
         
       default:
-        throw new IOException("Unexpected delete type [" + this.deleteType.toString() + "]. Row "+t.get+" ignored") ;
+        throw new IOException("Unexpected delete type [" + this.deleteType.toString() + "]. Row with key [" + key + "] ignored") ;
     }
-
-
-    // FROM OLD CODE. CHECK IF NEEDED OR NOT.
-
-    for (String fieldName : this.loadQueryFields) {
-      LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
-      persistentObj.put(persistentObj.getFieldIndex(fieldName), // name -> index
-                        this.writeField(persistentSchema.getField(fieldName).schema(),
-                                        this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
-                                        t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex()))) ;
-    
-    }
-
-    try {
-      ((GoraRecordWriter<Object,PersistentBase>) this.writer).write(t.get(0), (PersistentBase) persistentObj) ;
-    } catch (InterruptedException e) {
-      throw new IOException(e) ;
-    }
-
-  }
-
-  /**
-   * Converts one pig field data to PersistentBase Data.
-   * 
-   * @param avroSchema PersistentBase schema used to create new nested records
-   * @param field Pig schema of the field being converted
-   * @param pigData Pig data relative to the schema
-   * @return PersistentBase data
-   * @throws IOException
-   */
-  @SuppressWarnings("unchecked")
-  private Object writeField(Schema avroSchema, ResourceFieldSchema field, Object pigData) throws IOException {
-
-    // If data is null, return null (check if avro schema is right)
-    if (pigData == null) {
-      if (avroSchema.getType() != Type.UNION && avroSchema.getType() != Type.NULL) {
-        throw new IOException("Tuple field " + field.getName() + " is null, but Avro Schema is not union nor null") ;
-      } else {
-        return null ;
-      }
-    }
-    
-    // If avroSchema is union, it will not be the null field, so select the proper one
-    if (avroSchema.getType() == Type.UNION) {
-      avroSchema = avroSchema.getTypes().get(1) ;
-    }
-    
-    switch(field.getType()) {
-      case DataType.DOUBLE:
-      case DataType.FLOAT:
-      case DataType.LONG:
-      case DataType.BOOLEAN:
-      case DataType.NULL: return (Object)pigData ;
-      
-      case DataType.CHARARRAY: return new Utf8((String)pigData) ;
-      
-      case DataType.INTEGER:
-          if (avroSchema.getType() == Type.ENUM) {
-            AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
-          }else{
-            return (Integer)pigData ;
-          }
-          
-      case DataType.BYTEARRAY: return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
-      
-      case DataType.MAP: // Pig Map -> Avro Map
-        HashMap<Utf8,Object> persistentMap = new HashMap<Utf8,Object>() ;
-        for (Map.Entry<String, Object> pigMapElement: ((Map<String,Object>)pigData).entrySet()) {
-          persistentMap.put(new Utf8(pigMapElement.getKey()), this.writeField(avroSchema.getValueType(),field.getSchema().getFields()[0], pigMapElement.getValue())) ;
-        }
-        return persistentMap ;
-        
-      case DataType.BAG: // Pig Bag -> Avro Array
-        Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
-        for (Object pigArrayElement: (DataBag)pigData) {
-          if (avroSchema.getElementType().getType() == Type.RECORD) {
-            // If element type is record, the mapping Persistent->PigType deletes one nested tuple:
-            // We want the map as: map((a1,a2,a3), (b1,b2,b3),...) instead of map(((a1,a2,a3)), ((b1,b2,b3)), ...)
-            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
-          } else {
-            // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
-            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
-          }
-        }
-        return persistentArray ;
-        
-      case DataType.TUPLE: // Pig Tuple -> Avro Record
-        try {
-          PersistentBase persistentRecord = (PersistentBase) Class.forName(avroSchema.getFullName()).newInstance();
-          
-          ResourceFieldSchema[] tupleFieldSchemas = field.getSchema().getFields() ;
-          
-          for (int i=0; i<tupleFieldSchemas.length; i++) {
-            persistentRecord.put(persistentRecord.getFieldIndex(tupleFieldSchemas[i].getName()),
-                this.writeField(avroSchema.getField(tupleFieldSchemas[i].getName()).schema(),
-                                tupleFieldSchemas[i],
-                                ((Tuple)pigData).get(i))) ;
-          }
-          return persistentRecord ;
-        } catch (InstantiationException e) {
-          throw new IOException(e) ;
-        } catch (IllegalAccessException e) {
-          throw new IOException(e) ;
-        } catch (ClassNotFoundException e) {
-          throw new IOException(e) ;
-        }
-        
-      default:
-        throw new IOException("Unexpected field " + field.getName() +" with Pig type "+ DataType.genTypeToNameMap().get(field.getType())) ;
-    }
-    
   }
 
   /**
@@ -427,7 +317,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
    * @param fieldName name of the field to add to the deletes
    * @param pigField field with the element's name to delete
    */
-  private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws Exception {
+  private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws ExecException, Exception {
     @SuppressWarnings("rawtypes")
     StatefulHashMap deleteHashMap = (StatefulHashMap) persistent.get(persistent.getFieldIndex(fieldName)) ;
     switch (pigFieldSchema.getType()) {
