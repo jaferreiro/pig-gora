@@ -4,6 +4,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import java.util.Set;
 
 import junit.framework.Assert;
 
@@ -12,14 +13,21 @@ import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
+import org.apache.pig.builtin.mock.Storage;
+import org.apache.pig.builtin.mock.Storage.Data;
+import org.apache.pig.data.Tuple;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import com.google.common.collect.Sets;
 
 public class GoraStorageTest {
 
@@ -113,7 +121,7 @@ public class GoraStorageTest {
         "'url') ;",3);
     
     WebPage webpageUpper = dataStore.get("key1") ;
-    Assert.assertNotNull("Expected record with key 'key1' not found", webpageUpper) ;
+    Assert.assertNotNull("Record with key 'key1' not found", webpageUpper) ;
     
     WebPage expected = dataStore.getBeanFactory().newPersistent() ;
     expected.setUrl("HTTP://GORA.APACHE.ORG") ;
@@ -192,14 +200,23 @@ public class GoraStorageTest {
 
   @Test
   public void testDeleteRows() throws IOException {
+    
+    FileSystem hdfs = FileSystem.get(configuration) ;
+    hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-rows.csv"), new Path("test-delete-rows.csv")) ;
+    
     pigServer.setJobName("gora-pig test - delete rows");
     pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
-    pigServer.registerQuery("delete_rows = FOREACH paginas GENERATE key, UPPER(url) as url, content, outlinks," +
-        "                                   {} as parsedContent:{(chararray)}, (1, []) as metadata:(version:int, data:map[]) ;",2);
-    pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
+    pigServer.registerQuery("delete_rows = LOAD 'test-delete-rows.csv' AS (key:chararray) ;") ;
+    pigServer.registerQuery("STORE delete_rows INTO '.' using org.apache.gora.pig.GoraDeleteStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
-        "'*') ;",3);
+        "'rows') ;");
+    
+    WebPage webpage = dataStore.get("key1") ;
+    Assert.assertNull("Record with key 'key1' found", webpage) ;
+
+    webpage = dataStore.get("key7") ;
+    Assert.assertNotNull("Record with key 'key7' not found", webpage) ;
     
   }
   
