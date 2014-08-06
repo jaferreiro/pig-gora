@@ -350,13 +350,11 @@ public class GoraDeleteStorage implements StoreFuncInterface {
   
   @Override
   public void setStoreFuncUDFContextSignature(String signature) {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreFuncUDFContextSignature() {}", this);    
     this.udfcSignature = signature ;
   }
 
   @Override
   public void cleanupOnFailure(String location, Job job) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage cleanupOnFailure() {}", this);    
   }
 
   @Override
