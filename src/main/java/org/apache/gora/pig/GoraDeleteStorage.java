@@ -63,9 +63,10 @@ public class GoraDeleteStorage implements StoreFuncInterface {
   protected PigGoraOutputFormat<?,? extends PersistentBase> outputFormat ;
   protected GoraRecordWriter<?,? extends PersistentBase> writer ;
   
+  /** What type of delete is configured at constructor: ROWS or VALUES */
   protected DeleteType deleteType = null ;
 
-  protected ResourceSchema writeResourceSchema ;
+  /** Map for Pig fields of the tuple being stored: field_name -> (index in tuple, ResourceFieldSchema) */
   private   Map<String, ResourceFieldSchemaWithIndex> writeResourceFieldSchemaMap ;
   
   /**
@@ -218,11 +219,12 @@ public class GoraDeleteStorage implements StoreFuncInterface {
     }
     
     // Parse de the schema from string stored in properties object
-    this.writeResourceSchema = new ResourceSchema(Utils.getSchemaFromString(strSchema)) ;
-    if (LOG.isTraceEnabled()) LOG.trace(this.writeResourceSchema.toString()) ;
+    ResourceSchema writeResourceSchema = new ResourceSchema(Utils.getSchemaFromString(strSchema)) ;
     this.writeResourceFieldSchemaMap = new HashMap<String, ResourceFieldSchemaWithIndex>() ;
+    if (LOG.isTraceEnabled()) LOG.trace(writeResourceSchema.toString()) ;
+    
     int index = 0 ;
-    for (ResourceFieldSchema fieldSchema : this.writeResourceSchema.getFields()) {
+    for (ResourceFieldSchema fieldSchema : writeResourceSchema.getFields()) {
       this.writeResourceFieldSchemaMap.put(fieldSchema.getName(),
                                            new ResourceFieldSchemaWithIndex(fieldSchema, index++)) ;
     }
@@ -241,10 +243,12 @@ public class GoraDeleteStorage implements StoreFuncInterface {
     }
     
     String key = (String) t.get(this.writeResourceFieldSchemaMap.get("key").getIndex()) ;
+    LOG.trace("delete key: {}", key) ;
     
     switch (this.deleteType) {
       case ROWS :
         ((GoraRecordWriter<Object,PersistentBase>) this.writer).delete(key) ;
+        LOG.trace("  deleted row") ;
         break ;
         
       case VALUES :
@@ -257,6 +261,8 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         } catch (IllegalAccessException e) {
           throw new IOException(e) ;
         }
+
+        // TODO Precalculate what fields are maps this as optimization
         
         // Find the fields that are maps
         for (Entry<String,ResourceFieldSchemaWithIndex> entry: this.writeResourceFieldSchemaMap.entrySet()) {
@@ -264,6 +270,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
           Field avroField = this.persistentSchema.getField(fieldName) ;
           if (avroFieldIsMap(avroField)) {
             try {
+              LOG.trace("  deleting in {}", fieldName) ;
               setDeletes(persistentWithDeletes, fieldName, t.get(entry.getValue().getIndex()), entry.getValue().getResourceFieldSchema()) ;
             } catch (Exception e) {
               throw new IOException(e) ;
@@ -276,6 +283,8 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         } catch (InterruptedException e) {
           throw new IOException(e) ;
         }
+
+        this.getDataStore().put(key, persistentWithDeletes) ;
         
         break ;
         
@@ -290,10 +299,12 @@ public class GoraDeleteStorage implements StoreFuncInterface {
    * @return
    */
   private boolean avroFieldIsMap(Field field) {
-    if (field.schema().getType() == Type.MAP) return true ;
-    if (field.schema().getType() == Type.UNION) {
-      for (Schema unionFieldSchema: field.schema().getTypes()) {
-        if (unionFieldSchema.getType() == Type.MAP) return true ;
+    if (field != null) {
+      if (field.schema().getType() == Type.MAP) return true ;
+      if (field.schema().getType() == Type.UNION) {
+        for (Schema unionFieldSchema: field.schema().getTypes()) {
+          if (unionFieldSchema.getType() == Type.MAP) return true ;
+        }
       }
     }
     return false ;
@@ -325,6 +336,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         DataBag bag = DataType.toBag(pigField) ;
         for(Tuple t: bag){
           String deleteElementKey = (String) t.get(0) ;
+          LOG.trace("    {}", deleteElementKey) ;
           deleteHashMap.remove(deleteElementKey) ;
         }
         break ;
@@ -332,6 +344,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
       case DataType.MAP:
         Map<String,Object> map = DataType.toMap(pigField) ;
         for (String mapKey: map.keySet()) {
+          LOG.trace("    {}", mapKey) ;
           deleteHashMap.remove(mapKey) ;
         }
         break ;
@@ -339,6 +352,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
       case DataType.TUPLE:
         Tuple tuple = DataType.toTuple(pigField) ;
         for (Object elementKey: tuple) {
+          LOG.trace("    {}", elementKey) ;
           deleteHashMap.remove((String) elementKey) ;
         }
         break ;
@@ -346,6 +360,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
       default:
         throw new Exception("Unexpected pig field [" + pigField + "] of type " + DataType.genTypeToNameMap().get(pigFieldSchema.getType()) +" when trying to delete map values.") ;
     }
+    persistent.put(persistent.getFieldIndex(fieldName), deleteHashMap) ;
   }
   
   @Override

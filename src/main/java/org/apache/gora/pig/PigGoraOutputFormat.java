@@ -16,7 +16,7 @@ public class PigGoraOutputFormat<K, T extends Persistent> extends GoraOutputForm
   protected Configuration localConfiguration ;
   
   @Override
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   public RecordWriter<K, T> getRecordWriter(TaskAttemptContext context)
       throws IOException, InterruptedException {
 
