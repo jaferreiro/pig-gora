@@ -214,7 +214,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   }
   
   @Override
-  @SuppressWarnings({ "rawtypes" })
+  @SuppressWarnings({ "rawtypes", "unchecked" })
   public InputFormat getInputFormat() throws IOException {
     LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getInputFormat() {}", this);
     this.inputFormat = GoraInputFormatFactory.createInstance(this.keyClass, this.persistentClass);
@@ -600,7 +600,11 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     if (pigFieldSchemasNames.containsAll(mandatoryFieldNames)) {
       for (ResourceFieldSchema pigFieldSchema: pigFieldSchemas) {
         if (mandatoryFieldNames.contains(pigFieldSchema.getName())) {
-            checkEqualSchema(pigFieldSchema, this.persistentSchema.getField(pigFieldSchema.getName()).schema()) ;
+          Field persistentField = this.persistentSchema.getField(pigFieldSchema.getName()) ; 
+          if (persistentField == null) {
+            throw new IOException("Declared field in Pig [" + pigFieldSchema.getName() + "] to store does not exists in " + this.persistentClassName +".") ;
+          }
+          checkEqualSchema(pigFieldSchema, this.persistentSchema.getField(pigFieldSchema.getName()).schema()) ;
         }        
       }
     } else {
