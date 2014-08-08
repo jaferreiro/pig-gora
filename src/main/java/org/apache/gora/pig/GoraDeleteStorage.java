@@ -12,6 +12,7 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.Schema.Type;
+import org.apache.avro.util.Utf8;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordWriter;
@@ -335,32 +336,34 @@ public class GoraDeleteStorage implements StoreFuncInterface {
       case DataType.BAG:
         DataBag bag = DataType.toBag(pigField) ;
         for(Tuple t: bag){
-          String deleteElementKey = (String) t.get(0) ;
+          Utf8 deleteElementKey = new Utf8((String) t.get(0)) ;
           LOG.trace("    {}", deleteElementKey) ;
           deleteHashMap.remove(deleteElementKey) ;
         }
+        persistent.setDirty(fieldName) ;
         break ;
         
       case DataType.MAP:
         Map<String,Object> map = DataType.toMap(pigField) ;
         for (String mapKey: map.keySet()) {
           LOG.trace("    {}", mapKey) ;
-          deleteHashMap.remove(mapKey) ;
+          deleteHashMap.remove(new Utf8(mapKey)) ;
         }
+        persistent.setDirty(fieldName) ;
         break ;
         
       case DataType.TUPLE:
         Tuple tuple = DataType.toTuple(pigField) ;
         for (Object elementKey: tuple) {
           LOG.trace("    {}", elementKey) ;
-          deleteHashMap.remove((String) elementKey) ;
+          deleteHashMap.remove(new Utf8((String) elementKey)) ;
         }
+        persistent.setDirty(fieldName) ;
         break ;
         
       default:
         throw new Exception("Unexpected pig field [" + pigField + "] of type " + DataType.genTypeToNameMap().get(pigFieldSchema.getType()) +" when trying to delete map values.") ;
     }
-    persistent.put(persistent.getFieldIndex(fieldName), deleteHashMap) ;
   }
   
   @Override
