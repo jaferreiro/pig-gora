@@ -16,7 +16,6 @@ import org.apache.avro.util.Utf8;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordWriter;
-import org.apache.gora.persistency.StatefulHashMap;
 import org.apache.gora.persistency.impl.PersistentBase;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
@@ -263,7 +262,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
           throw new IOException(e) ;
         }
 
-        // TODO Precalculate what fields are maps this as optimization
+        // TODO Precalculate what fields are maps as optimization
         
         // Find the fields that are maps
         for (Entry<String,ResourceFieldSchemaWithIndex> entry: this.writeResourceFieldSchemaMap.entrySet()) {
@@ -331,7 +330,8 @@ public class GoraDeleteStorage implements StoreFuncInterface {
    */
   private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws ExecException, Exception {
     @SuppressWarnings("rawtypes")
-    StatefulHashMap deleteHashMap = (StatefulHashMap) persistent.get(persistent.getFieldIndex(fieldName)) ;
+    
+    Map deleteHashMap = (Map) persistent.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex() + 1) ;
     switch (pigFieldSchema.getType()) {
       case DataType.BAG:
         DataBag bag = DataType.toBag(pigField) ;

@@ -751,7 +751,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     for (String fieldName : this.loadQueryFields) {
       LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
-      persistentObj.put(persistentObj.getFieldIndex(fieldName), // name -> index
+      // XXX In Gora 0.4 Persistent object have the __g__dirty field.
+      persistentObj.put(this.writeResourceFieldSchemaMap.get(fieldName).getIndex() + 1 , // name -> index
                         this.writeField(persistentSchema.getField(fieldName).schema(),
                                         this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
                                         t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex()))) ;
@@ -838,7 +839,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
           ResourceFieldSchema[] tupleFieldSchemas = field.getSchema().getFields() ;
           
           for (int i=0; i<tupleFieldSchemas.length; i++) {
-            persistentRecord.put(persistentRecord.getFieldIndex(tupleFieldSchemas[i].getName()),
+            persistentRecord.put(this.writeResourceFieldSchemaMap.get(tupleFieldSchemas[i].getName()).getIndex() + 1,
                 this.writeField(avroSchema.getField(tupleFieldSchemas[i].getName()).schema(),
                                 tupleFieldSchemas[i],
                                 ((Tuple)pigData).get(i))) ;

@@ -7,7 +7,6 @@ import java.util.Properties;
 
 import junit.framework.Assert;
 
-import org.apache.avro.util.Utf8;
 import org.apache.gora.examples.generated.Metadata;
 import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.store.DataStore;
@@ -35,7 +34,6 @@ public class GoraStorageTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    System.setProperty(HBaseTestingUtility.TEST_DIRECTORY_KEY, "build/test-data");
     Configuration localExecutionConfiguration = new Configuration();
     localExecutionConfiguration.setStrings("hadoop.log.dir", localExecutionConfiguration.get("hadoop.tmp.dir"));
     utility = new HBaseTestingUtility(localExecutionConfiguration);
@@ -65,15 +63,14 @@ public class GoraStorageTest {
     dataStore.delete("key1") ;
     dataStore.delete("key7") ;
     
-    WebPage w = dataStore.getBeanFactory().newPersistent() ;
-	  Metadata m ;
+    WebPage w = WebPage.newBuilder().build() ;
 	  
 	  w.setUrl("http://gora.apache.org") ;
 	  w.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-	  w.addToParsedContent("elemento1") ;
-    w.addToParsedContent("elemento2") ;
-    w.putToOutlinks("k1", "v1") ;
-    m = new Metadata() ;
+	  w.getParsedContent().add("elemento1") ;
+    w.getParsedContent().add("elemento2") ;
+    w.getOutlinks().put("k1", "v1") ;
+    Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(3) ;
     w.setMetadata(m) ;
     
@@ -82,10 +79,10 @@ public class GoraStorageTest {
     w.clear() ;
     w.setUrl("http://www.google.com") ;
     w.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    w.addToParsedContent("elemento7") ;
-    w.addToParsedContent("elemento15") ;
-    w.putToOutlinks("k7", "v7") ;
-    m = new Metadata() ;
+    w.getParsedContent().add("elemento7") ;
+    w.getParsedContent().add("elemento15") ;
+    w.getOutlinks().put("k7", "v7") ;
+    m = Metadata.newBuilder().build() ;
     m.setVersion(7) ;
     w.setMetadata(m) ;
     
@@ -104,7 +101,7 @@ public class GoraStorageTest {
   public void testLoadSaveSubset() throws IOException {
 
     pigServer.setJobName("gora-pig test - load all fields");
-    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/gora-pig-0.4.1.jar");
     pigServer.registerQuery("paginas = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
@@ -118,13 +115,13 @@ public class GoraStorageTest {
     WebPage webpageUpper = dataStore.get("key1") ;
     Assert.assertNotNull("Record with key 'key1' not found", webpageUpper) ;
     
-    WebPage expected = dataStore.getBeanFactory().newPersistent() ;
+    WebPage expected = WebPage.newBuilder().build() ;
     expected.setUrl("HTTP://GORA.APACHE.ORG") ;
     expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-    expected.putToOutlinks("k1", "v1") ;
-    expected.addToParsedContent("elemento1") ;
-    expected.addToParsedContent("elemento2") ;
-    Metadata m = new Metadata() ;
+    expected.getOutlinks().put("k1", "v1") ;
+    expected.getParsedContent().add("elemento1") ;
+    expected.getParsedContent().add("elemento2") ;
+    Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(3) ;
     expected.setMetadata(m) ;
 
@@ -132,13 +129,13 @@ public class GoraStorageTest {
     
     webpageUpper = dataStore.get("key7") ;
     Assert.assertNotNull("Expected record with key 'key7' not found", webpageUpper) ;
-    expected = dataStore.getBeanFactory().newPersistent() ;
+    expected = WebPage.newBuilder().build() ;
     expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
     expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    expected.putToOutlinks("k7", "v7") ;
-    expected.addToParsedContent("elemento7") ;
-    expected.addToParsedContent("elemento15") ;
-    m = new Metadata() ;
+    expected.getOutlinks().put("k7", "v7") ;
+    expected.getParsedContent().add("elemento7") ;
+    expected.getParsedContent().add("elemento15") ;
+    m = Metadata.newBuilder().build() ;
     m.setVersion(7) ;
     expected.setMetadata(m) ;
     Assert.assertEquals(expected, webpageUpper) ;
@@ -152,7 +149,7 @@ public class GoraStorageTest {
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-map-values-addvals.csv"), new Path("test-delete-map-values-addvals.csv")) ;
     
     pigServer.setJobName("gora-pig test - update map");
-    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/gora-pig-0.4.1.jar");
     pigServer.registerQuery("map_values = LOAD 'test-delete-map-values-addvals.csv' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
     pigServer.registerQuery("pages = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
         "'java.lang.String'," +
@@ -165,9 +162,9 @@ public class GoraStorageTest {
         "'outlinks') ;",3);
 
     WebPage webpage = dataStore.get("key1") ;
-    Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getFromOutlinks("k1").compareTo(new Utf8("v1")) == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getFromOutlinks("k2").compareTo(new Utf8("v2")) == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getFromOutlinks("k3").compareTo(new Utf8("v3")) == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getOutlinks().get("k1").toString().compareTo("v1") == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
     //for (Utf8 key: webpage.getOutlinks().keySet()) {
     //  System.out.println(key + " : " + webpage.getOutlinks().get(key)) ;
     //}
@@ -180,7 +177,7 @@ public class GoraStorageTest {
   public void testLoadSaveAllFields() throws IOException {
 
     pigServer.setJobName("gora-pig test - load all fields");
-    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/gora-pig-0.4.1.jar");
     pigServer.registerQuery("paginas = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
     		"'java.lang.String'," +
     		"'org.apache.gora.examples.generated.WebPage'," +
@@ -198,10 +195,10 @@ public class GoraStorageTest {
     WebPage expected = dataStore.getBeanFactory().newPersistent() ;
     expected.setUrl("HTTP://GORA.APACHE.ORG") ;
     expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-    expected.putToOutlinks("k1", "v1") ;
-    expected.addToParsedContent("elemento1") ;
-    expected.addToParsedContent("elemento2") ;
-    Metadata m = new Metadata() ;
+    expected.getOutlinks().put("k1", "v1") ;
+    expected.getParsedContent().add("elemento1") ;
+    expected.getParsedContent().add("elemento2") ;
+    Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(1) ;
     expected.setMetadata(m) ;
 
@@ -212,10 +209,10 @@ public class GoraStorageTest {
     expected = dataStore.getBeanFactory().newPersistent() ;
     expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
     expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    expected.putToOutlinks("k7", "v7") ;
-    expected.addToParsedContent("elemento7") ;
-    expected.addToParsedContent("elemento15") ;
-    m = new Metadata() ;
+    expected.getOutlinks().put("k7", "v7") ;
+    expected.getParsedContent().add("elemento7") ;
+    expected.getParsedContent().add("elemento15") ;
+    m =  Metadata.newBuilder().build() ;
     m.setVersion(1) ;
     expected.setMetadata(m) ;
     Assert.assertEquals(expected, webpageUpper) ;
@@ -227,7 +224,7 @@ public class GoraStorageTest {
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-rows.csv"), new Path("test-delete-rows.csv")) ;
     
     pigServer.setJobName("gora-pig test - delete rows");
-    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/gora-pig-0.4.1.jar");
     pigServer.registerQuery("delete_rows = LOAD 'test-delete-rows.csv' AS (key:chararray) ;") ;
     pigServer.registerQuery("STORE delete_rows INTO '.' using org.apache.gora.pig.GoraDeleteStorage(" +
         "'java.lang.String'," +
@@ -250,7 +247,7 @@ public class GoraStorageTest {
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-map-values.csv"), new Path("test-delete-map-values.csv")) ;
     
     pigServer.setJobName("gora-pig test - delete map values");
-    pigServer.registerJar("target/gora-pig-0.4-indra-SNAPSHOT.jar");
+    pigServer.registerJar("target/gora-pig-0.4.1.jar");
     pigServer.registerQuery("map_values = LOAD 'test-delete-map-values-addvals.csv' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
     pigServer.registerQuery("pages = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
         "'java.lang.String'," +
@@ -265,20 +262,20 @@ public class GoraStorageTest {
     // Now, both pages must have "k2#v2" and "k3#v3" in outlinks
 
     WebPage webpage = dataStore.get("key1") ;
-    Assert.assertTrue("Record 'key1' expected to have 'k1' in outlinks", webpage.getFromOutlinks("k1") != null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getFromOutlinks("k2") != null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getFromOutlinks("k3") != null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getFromOutlinks("k1").compareTo(new Utf8("v1")) == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getFromOutlinks("k2").compareTo(new Utf8("v2")) == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getFromOutlinks("k3").compareTo(new Utf8("v3")) == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k1' in outlinks", webpage.getOutlinks().containsKey("k1")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getOutlinks().get("k1").toString().compareTo("v1") == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
 
     webpage = dataStore.get("key7") ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getFromOutlinks("k7") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getFromOutlinks("k2") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getFromOutlinks("k3") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getFromOutlinks("k7").compareTo(new Utf8("v7")) == 0) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getFromOutlinks("k2").compareTo(new Utf8("v2")) == 0) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getFromOutlinks("k3").compareTo(new Utf8("v3")) == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getOutlinks().get("k7").toString().compareTo("v7") == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
     
     pigServer.registerQuery("delete_values = LOAD 'test-delete-map-values.csv' USING PigStorage('|') AS (key:chararray, outlinks:map[chararray]) ; ") ;
     pigServer.registerQuery("STORE delete_values INTO '.' using org.apache.gora.pig.GoraDeleteStorage(" +
@@ -289,19 +286,19 @@ public class GoraStorageTest {
     // Now, page with "key1" must not contain in outlinks key "k1", but contain "k2" and "k3"
 
     webpage = dataStore.get("key1") ;
-    Assert.assertTrue("Record 'key1' expected to NOT have 'k1' in outlinks", webpage.getFromOutlinks("k1") == null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getFromOutlinks("k2") != null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getFromOutlinks("k3") != null) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getFromOutlinks("k2").compareTo(new Utf8("v2")) == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getFromOutlinks("k3").compareTo(new Utf8("v3")) == 0) ;
+    Assert.assertTrue("Record 'key1' expected to NOT have 'k1' in outlinks", !webpage.getOutlinks().containsKey("k1")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
+    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
 
     webpage = dataStore.get("key7") ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getFromOutlinks("k7") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getFromOutlinks("k2") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getFromOutlinks("k3") != null) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getFromOutlinks("k7").compareTo(new Utf8("v7")) == 0) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getFromOutlinks("k2").compareTo(new Utf8("v2")) == 0) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getFromOutlinks("k3").compareTo(new Utf8("v3")) == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getOutlinks().get("k7").toString().compareTo("v7") == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
+    Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
   }
 }
  
