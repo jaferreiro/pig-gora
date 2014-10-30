@@ -55,7 +55,7 @@ public class GoraStorageTest {
     }
     props.setProperty("fs.default.name", configuration.get("fs.default.name"));
     props.setProperty("mapred.job.tracker", configuration.get("mapred.job.tracker"));
-    pigServer = new PigServer(ExecType.MAPREDUCE, props);
+    pigServer = new PigServer(ExecType.LOCAL, props);
 
     dataStore = DataStoreFactory.getDataStore(String.class, WebPage.class, configuration);
   }

@@ -855,6 +855,11 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public void cleanupOnSuccess(String location, Job job) throws IOException {
+    try {
+        if (this.writer != null) this.writer.close(null);
+    } catch (InterruptedException e) {
+        throw new IOException(e) ;
+    }
     if (dataStore != null) dataStore.flush() ;
   }
 
