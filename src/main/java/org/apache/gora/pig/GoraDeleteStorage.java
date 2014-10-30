@@ -12,7 +12,6 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.Schema.Type;
-import org.apache.avro.util.Utf8;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordWriter;
@@ -331,14 +330,13 @@ public class GoraDeleteStorage implements StoreFuncInterface {
   private void setDeletes(PersistentBase persistent, String fieldName, Object pigField, ResourceFieldSchema pigFieldSchema) throws ExecException, Exception {
     @SuppressWarnings("rawtypes")
     
-    Map deleteHashMap = (Map) persistent.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex() + 1) ;
+    Map deleteHashMap = (Map) persistent.get(persistent.getField2IndexMapping().get(fieldName)) ;
     switch (pigFieldSchema.getType()) {
       case DataType.BAG:
         DataBag bag = DataType.toBag(pigField) ;
         for(Tuple t: bag){
-          Utf8 deleteElementKey = new Utf8((String) t.get(0)) ;
-          LOG.trace("    {}", deleteElementKey) ;
-          deleteHashMap.remove(deleteElementKey) ;
+          LOG.trace("    {}", t.get(0)) ;
+          deleteHashMap.remove(t.get(0)) ;
         }
         persistent.setDirty(fieldName) ;
         break ;
@@ -347,7 +345,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         Map<String,Object> map = DataType.toMap(pigField) ;
         for (String mapKey: map.keySet()) {
           LOG.trace("    {}", mapKey) ;
-          deleteHashMap.remove(new Utf8(mapKey)) ;
+          deleteHashMap.remove(mapKey) ;
         }
         persistent.setDirty(fieldName) ;
         break ;
@@ -356,7 +354,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
         Tuple tuple = DataType.toTuple(pigField) ;
         for (Object elementKey: tuple) {
           LOG.trace("    {}", elementKey) ;
-          deleteHashMap.remove(new Utf8((String) elementKey)) ;
+          deleteHashMap.remove( elementKey) ;
         }
         persistent.setDirty(fieldName) ;
         break ;

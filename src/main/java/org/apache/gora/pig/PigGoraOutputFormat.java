@@ -26,9 +26,6 @@ public class PigGoraOutputFormat<K, T extends Persistent> extends GoraOutputForm
     Class<T> rowClass = (Class<T>) this.localConfiguration.getClass(OUTPUT_VALUE_CLASS, null);
     final DataStore<K, T> store =
       DataStoreFactory.createDataStore(dataStoreClass, keyClass, rowClass, this.localConfiguration);
-
-//    setOutputPath(store, context);
-
     return new GoraRecordWriter(store, context);
   }
   

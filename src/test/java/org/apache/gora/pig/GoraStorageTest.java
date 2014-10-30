@@ -3,6 +3,8 @@ package org.apache.gora.pig;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.Properties;
 
 import junit.framework.Assert;
@@ -36,14 +38,21 @@ public class GoraStorageTest {
   public static void setUpBeforeClass() throws Exception {
     Configuration localExecutionConfiguration = new Configuration();
     localExecutionConfiguration.setStrings("hadoop.log.dir", localExecutionConfiguration.get("hadoop.tmp.dir"));
+    localExecutionConfiguration.setStrings("hbase.master.distributed.log.splitting", "false") ;
     utility = new HBaseTestingUtility(localExecutionConfiguration);
-    utility.startMiniCluster(1);
-    utility.startMiniMapReduceCluster(1);
+    utility.startMiniCluster();
+    utility.startMiniMapReduceCluster();
     configuration = utility.getConfiguration();
 
     configuration.writeXml(new FileOutputStream("target/test-classes/core-site.xml"));
 
     Properties props = new Properties();
+    Iterator<Entry<String,String>> it = configuration.iterator() ;
+
+    while (it.hasNext()) {
+      Entry<String,String> par = it.next() ;
+      props.setProperty(par.getKey(), par.getValue()) ;
+    }
     props.setProperty("fs.default.name", configuration.get("fs.default.name"));
     props.setProperty("mapred.job.tracker", configuration.get("mapred.job.tracker"));
     pigServer = new PigServer(ExecType.MAPREDUCE, props);
@@ -165,9 +174,6 @@ public class GoraStorageTest {
     Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getOutlinks().get("k1").toString().compareTo("v1") == 0) ;
     Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
     Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
-    //for (Utf8 key: webpage.getOutlinks().keySet()) {
-    //  System.out.println(key + " : " + webpage.getOutlinks().get(key)) ;
-    //}
   }
   
   /**
@@ -182,7 +188,7 @@ public class GoraStorageTest {
     		"'java.lang.String'," +
     		"'org.apache.gora.examples.generated.WebPage'," +
     		"'*') ;",1);
-    pigServer.registerQuery("resultado = FOREACH paginas GENERATE key, UPPER(url) as url, content, outlinks," +
+    pigServer.registerQuery("resultado = FOREACH paginas GENERATE key, UPPER(url) as url, content, [] as outlinks:map[], [] as headers:map[]," +
     		"                                   {} as parsedContent:{(chararray)}, (1, []) as metadata:(version:int, data:map[]) ;",2);
     pigServer.registerQuery("STORE resultado INTO '.' using org.apache.gora.pig.GoraStorage(" +
         "'java.lang.String'," +
@@ -259,21 +265,19 @@ public class GoraStorageTest {
         "'org.apache.gora.examples.generated.WebPage'," +
         "'outlinks') ;",3);
 
-    // Now, both pages must have "k2#v2" and "k3#v3" in outlinks
+    // Now, both pages must have "k2#v2" and "k3#v3" in outlinks, but not k1
 
     WebPage webpage = dataStore.get("key1") ;
-    Assert.assertTrue("Record 'key1' expected to have 'k1' in outlinks", webpage.getOutlinks().containsKey("k1")) ;
+    Assert.assertFalse("Record 'key1' expected to NOT have 'k1' in outlinks", webpage.getOutlinks().containsKey("k1")) ;
     Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
     Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k1#v1' in outlinks", webpage.getOutlinks().get("k1").toString().compareTo("v1") == 0) ;
     Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
     Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
 
     webpage = dataStore.get("key7") ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
+    Assert.assertFalse("Record 'key7' expected to NOT have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
     Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
     Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getOutlinks().get("k7").toString().compareTo("v7") == 0) ;
     Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
     Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
     
@@ -286,17 +290,15 @@ public class GoraStorageTest {
     // Now, page with "key1" must not contain in outlinks key "k1", but contain "k2" and "k3"
 
     webpage = dataStore.get("key1") ;
-    Assert.assertTrue("Record 'key1' expected to NOT have 'k1' in outlinks", !webpage.getOutlinks().containsKey("k1")) ;
+    Assert.assertFalse("Record 'key1' expected to NOT have 'k1' in outlinks", !webpage.getOutlinks().containsKey("k1")) ;
     Assert.assertTrue("Record 'key1' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
+    Assert.assertTrue("Record 'key1' expected to NOT have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
     Assert.assertTrue("Record 'key1' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
-    Assert.assertTrue("Record 'key1' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
 
     webpage = dataStore.get("key7") ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
+    Assert.assertFalse("Record 'key7' expected to NOT have 'k7' in outlinks", webpage.getOutlinks().containsKey("k7")) ;
     Assert.assertTrue("Record 'key7' expected to have 'k2' in outlinks", webpage.getOutlinks().containsKey("k2")) ;
     Assert.assertTrue("Record 'key7' expected to have 'k3' in outlinks", webpage.getOutlinks().containsKey("k3")) ;
-    Assert.assertTrue("Record 'key7' expected to have 'k7#v7' in outlinks", webpage.getOutlinks().get("k7").toString().compareTo("v7") == 0) ;
     Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
     Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
   }

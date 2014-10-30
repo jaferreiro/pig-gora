@@ -14,10 +14,8 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.Schema.Type;
-import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericData.Array;
-import org.apache.avro.util.Utf8;
 import org.apache.gora.mapreduce.GoraInputFormat;
 import org.apache.gora.mapreduce.GoraInputFormatFactory;
 import org.apache.gora.mapreduce.GoraOutputFormat;
@@ -118,7 +116,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    */
   public GoraStorage(String keyClassName, String persistentClassName, String csvFields) throws InstantiationException, IllegalAccessException {
     super();
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage constructor() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage constructor() {}", this);
     
     this.keyClassName = keyClassName ;
     this.persistentClassName = persistentClassName ;
@@ -174,7 +172,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    */
   @Override
   public void setLocation(String location, Job job) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setLocation() {} {}", location, this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setLocation() {} {}", location, this);
     this.job = job;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }
@@ -216,7 +214,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   @SuppressWarnings({ "rawtypes", "unchecked" })
   public InputFormat getInputFormat() throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getInputFormat() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getInputFormat() {}", this);
     this.inputFormat = GoraInputFormatFactory.createInstance(this.keyClass, this.persistentClass);
 
     Query query = this.getDataStore().newQuery() ;
@@ -231,16 +229,15 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public LoadCaster getLoadCaster() throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getLoadCaster()", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getLoadCaster()", this);
     return null;
-    // return new Utf8StorageConverter();
   }
 
   @Override
   @SuppressWarnings({ "rawtypes" })
   public void prepareToRead(RecordReader reader, PigSplit split)
       throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage prepareToRead {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage prepareToRead {}", this);
     this.reader = (GoraRecordReader<?, ?>) reader;
     this.split = split;
   }
@@ -305,7 +302,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    * Boolean      -> Boolean
    * Enum         -> Integer
    * ByteBuffer   -> DataByteArray
-   * Utf8         -> String
+   * String       -> String
    * Float        -> Float
    * Double       -> Double
    * Integer      -> Integer
@@ -313,13 +310,14 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    * Union        -> X
    * Record       -> Tuple
    * Array        -> Bag
-   * Map<Utf8,b'> -> HashMap<String,Object>
+   * Map<String,b'> -> HashMap<String,Object>
    * 
    * @param schema Source schema
    * @param data Source data: PersistentBase | String | Long,...
    * @return Pig type: Tuple | Bag | String | Long | ...
    * @throws ExecException 
    */
+  @SuppressWarnings("unchecked")
   private static Object persistentField2PigType(Schema schema, Object data) throws ExecException {
     
     Type schemaType = schema.getType();
@@ -329,7 +327,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case BOOLEAN: return (Boolean)data ; 
       case ENUM:    return new Integer(((Enum<?>)data).ordinal()) ;
       case BYTES:   return new DataByteArray(((ByteBuffer)data).array()) ;
-      case STRING:  return ((Utf8)data).toString() ;
+      case STRING:  return data.toString() ;
         
       case FLOAT:
       case DOUBLE:
@@ -353,10 +351,9 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         return recordTuple ;
 
       case ARRAY:
-        GenericArray<?> arr = (GenericArray<?>) data;
         DataBag bag = BagFactory.getInstance().newDefaultBag() ;
         Schema arrValueSchema = schema.getElementType() ;
-        for(Object element: arr) {
+        for(Object element: (List<?>)data) {
           Object pigElement = persistentField2PigType(arrValueSchema, element) ;
           if (pigElement instanceof Tuple) {
             bag.add((Tuple)pigElement) ;
@@ -369,11 +366,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         return bag ;
 
       case MAP:
-        @SuppressWarnings("unchecked")
-        HashMap<Utf8,?> avroMap = (HashMap<Utf8, ?>) data ;
-        // Convert Utf8 avro types to String
         HashMap<String,Object> map = new HashMap<String,Object>() ;
-        for (Entry<Utf8,?> e : avroMap.entrySet()) {
+        for (Entry<CharSequence,?> e : ((Map<CharSequence,?>)data).entrySet()) {
           map.put(e.getKey().toString(), persistentField2PigType(schema.getValueType(), e.getValue())) ;
         }
         return map ;
@@ -391,7 +385,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   
   @Override
   public void setUDFContextSignature(String signature) {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setUDFContextSignature() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setUDFContextSignature() {}", this);
     this.udfcSignature = signature;
   }
 
@@ -409,7 +403,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    */
   @Override
   public ResourceSchema getSchema(String location, Job job) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getSchema() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getSchema() {}", this);
     // Reuse if already created
     if (this.readResourceSchema != null) return this.readResourceSchema ;
     
@@ -555,7 +549,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   @SuppressWarnings({ "rawtypes", "unchecked" })
   public OutputFormat getOutputFormat() throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getOutputFormat() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getOutputFormat() {}", this);
     try {
       this.outputFormat = GoraOutputFormatFactory.createInstance(PigGoraOutputFormat.class, this.keyClass, this.persistentClass);
     } catch (Exception e) {
@@ -568,7 +562,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public void setStoreLocation(String location, Job job) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreLocation() {}", this) ;
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreLocation() {}", this) ;
     this.job = job ;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }
@@ -583,7 +577,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    * Not present names for recordfields will be treated as null .
    */
   public void checkSchema(ResourceSchema s) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage checkSchema() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage checkSchema() {}", this);
     
     // Expected pig schema: tuple (key, recordfield, recordfield, recordfi...)
     ResourceFieldSchema[] pigFieldSchemas = s.getFields();
@@ -608,9 +602,9 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         }        
       }
     } else {
-      throw new IOException("Fields declared in constructor ("
+      throw new IOException("Some fields declared in the constructor ("
                             + Arrays.toString(this.loadQueryFields)
-                            + ") not found in the tuples to be saved ("
+                            + ") are missing in the tuples to be saved ("
                             + Arrays.toString(s.fieldNames()) + ")" ) ;
     }
     
@@ -709,13 +703,13 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       }
     }
     // throws IOException(message,Exception()) to mark nested union exception.
-    throw new IOException("Expected some field in "+avroSchema.getName()+" for pig schema type"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()), new Exception("Union not satisfied")) ;
+    throw new IOException("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'"), new Exception("Union not satisfied")) ;
   }
   
   @Override
   @SuppressWarnings({ "rawtypes", "unchecked" })
   public void prepareToWrite(RecordWriter writer) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage prepareToWrite() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage prepareToWrite() {}", this);
     this.writer = (GoraRecordWriter<?,? extends PersistentBase>) writer ;
     
     // Get the schema of data to write from UDFContext (coming from frontend checkSchema())
@@ -739,24 +733,18 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public void putNext(Tuple t) throws IOException {
 
-    PersistentBase persistentObj ;  
+    PersistentBase persistentObj ;
     
-    try {
-       persistentObj = this.persistentClass.newInstance() ;
-    } catch (InstantiationException e) {
-      throw new IOException(e) ;
-    } catch (IllegalAccessException e) {
-      throw new IOException(e) ;
-    }
+    persistentObj = this.dataStore.newPersistent() ;
 
+    LOG.trace("key: {}", t.get(0)) ;
     for (String fieldName : this.loadQueryFields) {
-      LOG.trace("Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
-      // XXX In Gora 0.4 Persistent object have the __g__dirty field.
-      persistentObj.put(this.writeResourceFieldSchemaMap.get(fieldName).getIndex() + 1 , // name -> index
+      LOG.trace("  Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
+      LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
+      persistentObj.put(persistentObj.getField2IndexMapping().get(fieldName), // name -> index
                         this.writeField(persistentSchema.getField(fieldName).schema(),
                                         this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
                                         t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex()))) ;
-    
     }
 
     try {
@@ -764,7 +752,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     } catch (InterruptedException e) {
       throw new IOException(e) ;
     }
-
+    this.dataStore.flush() ;
   }
 
   /**
@@ -776,7 +764,6 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    * @return PersistentBase data
    * @throws IOException
    */
-  @SuppressWarnings("unchecked")
   private Object writeField(Schema avroSchema, ResourceFieldSchema field, Object pigData) throws IOException {
 
     // If data is null, return null (check if avro schema is right)
@@ -800,7 +787,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.BOOLEAN:
       case DataType.NULL: return (Object)pigData ;
       
-      case DataType.CHARARRAY: return new Utf8((String)pigData) ;
+      case DataType.CHARARRAY: return pigData.toString() ;
       
       case DataType.INTEGER:
           if (avroSchema.getType() == Type.ENUM) {
@@ -812,11 +799,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.BYTEARRAY: return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
       
       case DataType.MAP: // Pig Map -> Avro Map
-        HashMap<Utf8,Object> persistentMap = new HashMap<Utf8,Object>() ;
-        for (Map.Entry<String, Object> pigMapElement: ((Map<String,Object>)pigData).entrySet()) {
-          persistentMap.put(new Utf8(pigMapElement.getKey()), this.writeField(avroSchema.getValueType(),field.getSchema().getFields()[0], pigMapElement.getValue())) ;
-        }
-        return persistentMap ;
+        return pigData ;
         
       case DataType.BAG: // Pig Bag -> Avro Array
         Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
@@ -839,7 +822,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
           ResourceFieldSchema[] tupleFieldSchemas = field.getSchema().getFields() ;
           
           for (int i=0; i<tupleFieldSchemas.length; i++) {
-            persistentRecord.put(this.writeResourceFieldSchemaMap.get(tupleFieldSchemas[i].getName()).getIndex() + 1,
+            persistentRecord.put(persistentRecord.getField2IndexMapping().get(tupleFieldSchemas[i].getName()),
                 this.writeField(avroSchema.getField(tupleFieldSchemas[i].getName()).schema(),
                                 tupleFieldSchemas[i],
                                 ((Tuple)pigData).get(i))) ;
@@ -861,13 +844,13 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public void setStoreFuncUDFContextSignature(String signature) {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreFuncUDFContextSignature() {}", this);    
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreFuncUDFContextSignature() {}", this);    
     this.udfcSignature = signature ;
   }
 
   @Override
   public void cleanupOnFailure(String location, Job job) throws IOException {
-    LOG.debug("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage cleanupOnFailure() {}", this);    
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage cleanupOnFailure() {}", this);    
   }
 
   @Override
