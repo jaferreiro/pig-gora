@@ -750,7 +750,6 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     } catch (InterruptedException e) {
       throw new IOException(e) ;
     }
-    this.dataStore.flush() ;
   }
 
   /**
@@ -808,7 +807,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
             persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
           } else {
             // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
-            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
+            persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0].getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
           }
         }
         return persistentArray ;
