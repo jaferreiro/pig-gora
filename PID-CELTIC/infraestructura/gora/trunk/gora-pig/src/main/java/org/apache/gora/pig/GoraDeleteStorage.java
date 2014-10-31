@@ -37,6 +37,12 @@ import org.apache.pig.impl.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 
+ * TODO Delete the delete type "values", since will be mandatory to rewrite all the map (Gora 0.4+ does
+ *      not implements incremental updates).
+ *
+ */
 public class GoraDeleteStorage implements StoreFuncInterface {
 
   public static final Logger LOG = LoggerFactory.getLogger(GoraDeleteStorage.class);
