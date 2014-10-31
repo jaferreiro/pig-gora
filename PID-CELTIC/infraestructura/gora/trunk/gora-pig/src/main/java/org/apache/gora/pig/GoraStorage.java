@@ -733,9 +733,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public void putNext(Tuple t) throws IOException {
 
-    PersistentBase persistentObj ;
-    
-    persistentObj = this.dataStore.newPersistent() ;
+    PersistentBase persistentObj = this.dataStore.newPersistent() ;
 
     LOG.trace("key: {}", t.get(0)) ;
     for (String fieldName : this.loadQueryFields) {

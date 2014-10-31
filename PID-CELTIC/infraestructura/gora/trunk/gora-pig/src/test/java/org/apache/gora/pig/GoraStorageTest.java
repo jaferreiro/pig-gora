@@ -9,6 +9,7 @@ import java.util.Properties;
 
 import junit.framework.Assert;
 
+import org.apache.avro.util.Utf8;
 import org.apache.gora.examples.generated.Metadata;
 import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.store.DataStore;
@@ -34,6 +35,11 @@ public class GoraStorageTest {
   private static PigServer                  pigServer;
   private static DataStore<String, WebPage> dataStore;
 
+  /**
+   * Configures if execute pigServer in local or in a cluster
+   */
+  private static ExecType pigServerExecType = ExecType.LOCAL ; 
+  
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     Configuration localExecutionConfiguration = new Configuration();
@@ -55,7 +61,7 @@ public class GoraStorageTest {
     }
     props.setProperty("fs.default.name", configuration.get("fs.default.name"));
     props.setProperty("mapred.job.tracker", configuration.get("mapred.job.tracker"));
-    pigServer = new PigServer(ExecType.LOCAL, props);
+    pigServer = new PigServer(GoraStorageTest.pigServerExecType, props);
 
     dataStore = DataStoreFactory.getDataStore(String.class, WebPage.class, configuration);
   }
@@ -74,11 +80,11 @@ public class GoraStorageTest {
     
     WebPage w = WebPage.newBuilder().build() ;
 	  
-	  w.setUrl("http://gora.apache.org") ;
+	  w.setUrl(new Utf8("http://gora.apache.org")) ;
 	  w.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-	  w.getParsedContent().add("elemento1") ;
-    w.getParsedContent().add("elemento2") ;
-    w.getOutlinks().put("k1", "v1") ;
+	  w.getParsedContent().add(new Utf8("elemento1")) ;
+    w.getParsedContent().add(new Utf8("elemento2")) ;
+    w.getOutlinks().put(new Utf8("k1"), new Utf8("v1")) ;
     Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(3) ;
     w.setMetadata(m) ;
@@ -86,11 +92,11 @@ public class GoraStorageTest {
     dataStore.put("key1", w) ;
     
     w.clear() ;
-    w.setUrl("http://www.google.com") ;
+    w.setUrl(new Utf8("http://www.google.com")) ;
     w.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    w.getParsedContent().add("elemento7") ;
-    w.getParsedContent().add("elemento15") ;
-    w.getOutlinks().put("k7", "v7") ;
+    w.getParsedContent().add(new Utf8("elemento7")) ;
+    w.getParsedContent().add(new Utf8("elemento15")) ;
+    w.getOutlinks().put(new Utf8("k7"), new Utf8("v7")) ;
     m = Metadata.newBuilder().build() ;
     m.setVersion(7) ;
     w.setMetadata(m) ;
@@ -125,11 +131,11 @@ public class GoraStorageTest {
     Assert.assertNotNull("Record with key 'key1' not found", webpageUpper) ;
     
     WebPage expected = WebPage.newBuilder().build() ;
-    expected.setUrl("HTTP://GORA.APACHE.ORG") ;
+    expected.setUrl(new Utf8("HTTP://GORA.APACHE.ORG")) ;
     expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-    expected.getOutlinks().put("k1", "v1") ;
-    expected.getParsedContent().add("elemento1") ;
-    expected.getParsedContent().add("elemento2") ;
+    expected.getOutlinks().put(new Utf8("k1"), new Utf8("v1")) ;
+    expected.getParsedContent().add(new Utf8("elemento1")) ;
+    expected.getParsedContent().add(new Utf8("elemento2")) ;
     Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(3) ;
     expected.setMetadata(m) ;
@@ -139,11 +145,11 @@ public class GoraStorageTest {
     webpageUpper = dataStore.get("key7") ;
     Assert.assertNotNull("Expected record with key 'key7' not found", webpageUpper) ;
     expected = WebPage.newBuilder().build() ;
-    expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
+    expected.setUrl(new Utf8("HTTP://WWW.GOOGLE.COM")) ;
     expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    expected.getOutlinks().put("k7", "v7") ;
-    expected.getParsedContent().add("elemento7") ;
-    expected.getParsedContent().add("elemento15") ;
+    expected.getOutlinks().put(new Utf8("k7"), new Utf8("v7")) ;
+    expected.getParsedContent().add(new Utf8("elemento7")) ;
+    expected.getParsedContent().add(new Utf8("elemento15")) ;
     m = Metadata.newBuilder().build() ;
     m.setVersion(7) ;
     expected.setMetadata(m) ;
@@ -156,15 +162,24 @@ public class GoraStorageTest {
     FileSystem hdfs = FileSystem.get(configuration) ;
     // Values to add to output links of webpage
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-map-values-addvals.csv"), new Path("test-delete-map-values-addvals.csv")) ;
+
+    String valuesSource = null ;
+    if (GoraStorageTest.pigServerExecType == ExecType.LOCAL) {
+      valuesSource = "src/test/resources/test-delete-map-values-addvals.csv" ;
+    } else {
+      valuesSource = "test-delete-map-values-addvals.csv" ;
+    }
     
     pigServer.setJobName("gora-pig test - update map");
     pigServer.registerJar("target/gora-pig-0.4.1.jar");
-    pigServer.registerQuery("map_values = LOAD 'test-delete-map-values-addvals.csv' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
+    pigServer.registerJar("datafu-1.2.0.jar");
+    pigServer.registerQuery("define BagConcat datafu.pig.bags.BagConcat();") ;
+    pigServer.registerQuery("map_values = LOAD '" + valuesSource + "' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
     pigServer.registerQuery("pages = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
         "'outlinks') ;",1);
-    pigServer.registerQuery("pages_updated = FOREACH pages GENERATE key, map_values.outlinks as outlinks ;") ;
+    pigServer.registerQuery("pages_updated = FOREACH pages GENERATE key, BagConcat(outlinks, map_values.outlinks) as outlinks ;") ;
     pigServer.registerQuery("STORE pages_updated INTO '.' using org.apache.gora.pig.GoraStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
@@ -199,11 +214,11 @@ public class GoraStorageTest {
     Assert.assertNotNull("Expected record with key 'key1' not found", webpageUpper) ;
     
     WebPage expected = dataStore.getBeanFactory().newPersistent() ;
-    expected.setUrl("HTTP://GORA.APACHE.ORG") ;
+    expected.setUrl(new Utf8("HTTP://GORA.APACHE.ORG")) ;
     expected.setContent(ByteBuffer.wrap("Texto 1".getBytes())) ;
-    expected.getOutlinks().put("k1", "v1") ;
-    expected.getParsedContent().add("elemento1") ;
-    expected.getParsedContent().add("elemento2") ;
+    expected.getOutlinks().put(new Utf8("k1"), new Utf8("v1")) ;
+    expected.getParsedContent().add(new Utf8("elemento1")) ;
+    expected.getParsedContent().add(new Utf8("elemento2")) ;
     Metadata m = Metadata.newBuilder().build() ;
     m.setVersion(1) ;
     expected.setMetadata(m) ;
@@ -213,11 +228,11 @@ public class GoraStorageTest {
     webpageUpper = dataStore.get("key7") ;
     Assert.assertNotNull("Expected record with key 'key7' not found", webpageUpper) ;
     expected = dataStore.getBeanFactory().newPersistent() ;
-    expected.setUrl("HTTP://WWW.GOOGLE.COM") ;
+    expected.setUrl(new Utf8("HTTP://WWW.GOOGLE.COM")) ;
     expected.setContent(ByteBuffer.wrap("Texto 2".getBytes())) ;
-    expected.getOutlinks().put("k7", "v7") ;
-    expected.getParsedContent().add("elemento7") ;
-    expected.getParsedContent().add("elemento15") ;
+    expected.getOutlinks().put(new Utf8("k7"), new Utf8("v7")) ;
+    expected.getParsedContent().add(new Utf8("elemento7")) ;
+    expected.getParsedContent().add(new Utf8("elemento15")) ;
     m =  Metadata.newBuilder().build() ;
     m.setVersion(1) ;
     expected.setMetadata(m) ;
@@ -228,10 +243,17 @@ public class GoraStorageTest {
   public void testDeleteRows() throws IOException {
     FileSystem hdfs = FileSystem.get(configuration) ;
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-rows.csv"), new Path("test-delete-rows.csv")) ;
+
+    String valuesSource = null ;
+    if (GoraStorageTest.pigServerExecType == ExecType.LOCAL) {
+      valuesSource = "src/test/resources/test-delete-rows.csv" ;
+    } else {
+      valuesSource = "test-delete-rows.csv" ;
+    }
     
     pigServer.setJobName("gora-pig test - delete rows");
     pigServer.registerJar("target/gora-pig-0.4.1.jar");
-    pigServer.registerQuery("delete_rows = LOAD 'test-delete-rows.csv' AS (key:chararray) ;") ;
+    pigServer.registerQuery("delete_rows = LOAD '" + valuesSource + "' AS (key:chararray) ;") ;
     pigServer.registerQuery("STORE delete_rows INTO '.' using org.apache.gora.pig.GoraDeleteStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
@@ -251,10 +273,17 @@ public class GoraStorageTest {
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-map-values-addvals.csv"), new Path("test-delete-map-values-addvals.csv")) ;
     // Values to delete from output links of webpage with key 'key1'
     hdfs.copyFromLocalFile(new Path("src/test/resources/test-delete-map-values.csv"), new Path("test-delete-map-values.csv")) ;
+
+    String valuesSource = null ;
+    if (GoraStorageTest.pigServerExecType == ExecType.LOCAL) {
+      valuesSource = "src/test/resources/test-delete-map-values-addvals.csv" ;
+    } else {
+      valuesSource = "test-delete-map-values-addvals.csv" ;
+    }
     
     pigServer.setJobName("gora-pig test - delete map values");
     pigServer.registerJar("target/gora-pig-0.4.1.jar");
-    pigServer.registerQuery("map_values = LOAD 'test-delete-map-values-addvals.csv' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
+    pigServer.registerQuery("map_values = LOAD '" + valuesSource + "' USING PigStorage('|') AS (outlinks:map[chararray]) ;") ;
     pigServer.registerQuery("pages = LOAD '.' using org.apache.gora.pig.GoraStorage (" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
@@ -281,7 +310,14 @@ public class GoraStorageTest {
     Assert.assertTrue("Record 'key7' expected to have 'k2#v2' in outlinks", webpage.getOutlinks().get("k2").toString().compareTo("v2") == 0) ;
     Assert.assertTrue("Record 'key7' expected to have 'k3#v3' in outlinks", webpage.getOutlinks().get("k3").toString().compareTo("v3") == 0) ;
     
-    pigServer.registerQuery("delete_values = LOAD 'test-delete-map-values.csv' USING PigStorage('|') AS (key:chararray, outlinks:map[chararray]) ; ") ;
+    if (GoraStorageTest.pigServerExecType == ExecType.LOCAL) {
+      valuesSource = "src/test/resources/test-delete-map-values.csv" ;
+    } else {
+      valuesSource = "test-delete-map-values.csv" ;
+    }
+
+    
+    pigServer.registerQuery("delete_values = LOAD '" + valuesSource + "' USING PigStorage('|') AS (key:chararray, outlinks:map[chararray]) ; ") ;
     pigServer.registerQuery("STORE delete_values INTO '.' using org.apache.gora.pig.GoraDeleteStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
