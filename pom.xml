@@ -106,7 +106,7 @@
             <artifactId>hadoop-test</artifactId>
             <scope>test</scope>
         </dependency>
-        
+
         <!-- Hadoop Dependencies -->
         <dependency>
             <groupId>org.apache.hadoop</groupId>
@@ -151,7 +151,7 @@
             <artifactId>automaton</artifactId>
             <scope>test</scope>
         </dependency>
-        
+
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr-runtime</artifactId>
@@ -163,7 +163,14 @@
             <artifactId>commons-io</artifactId>
             <scope>test</scope>
         </dependency>
-        
+
+        <dependency>
+            <groupId>com.linkedin.datafu</groupId>
+            <artifactId>datafu</artifactId>
+            <version>${datafu.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
 </project>
