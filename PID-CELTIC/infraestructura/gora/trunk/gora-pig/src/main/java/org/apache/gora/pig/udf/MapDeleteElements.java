@@ -49,6 +49,11 @@ public class MapDeleteElements extends EvalFunc<Map<String,Object>> {
             resultMap.remove((String)e) ;
           }
           break ;
+        case DataType.MAP:
+          Map<String,Object> deleteKeys = (Map<String,Object>) input.get(i) ;
+          for (String key: deleteKeys.keySet()) {
+            resultMap.remove(key) ;
+          }
         case DataType.LONG:
           break ;
         default:
