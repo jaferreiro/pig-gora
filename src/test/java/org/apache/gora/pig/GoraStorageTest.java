@@ -39,7 +39,7 @@ public class GoraStorageTest {
   /**
    * Configures if execute pigServer in local or in a cluster
    */
-  private static ExecType pigServerExecType = ExecType.LOCAL ; 
+  private static ExecType pigServerExecType = ExecType.MAPREDUCE ; 
   
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
