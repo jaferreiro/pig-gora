@@ -125,7 +125,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       Class<?> persistentClazz = Class.forName(persistentClassName);
       this.persistentClass = persistentClazz.asSubclass(PersistentBase.class);
     } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
+    	LOG.error("Error creating instance of key and/or persistent.", e) ;
+    	throw new RuntimeException(e);
     }
 
     this.persistentSchema = this.persistentClass.newInstance().getSchema() ;
@@ -158,7 +159,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
    */
   protected DataStore<?, ? extends PersistentBase> getDataStore() throws GoraException {
     if (this.localJobConf == null) {
-      throw new GoraException("Calling getDataStore(). setLocation()/setStoreLocation() must be called first!") ;
+    	LOG.error("Error integrating gora-pig and Pig. Calling getDataStore(). setLocation()/setStoreLocation() must be called first!") ;
+    	throw new GoraException("Calling getDataStore(). setLocation()/setStoreLocation() must be called first!") ;
     }
     if (this.dataStore == null) {
       this.dataStore = DataStoreFactory.getDataStore(this.keyClass, this.persistentClass, this.localJobConf) ;
@@ -249,6 +251,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     try {
       if (!this.reader.nextKeyValue()) return null;
     } catch (Exception e) {
+      LOG.error("Error retrieving next key-value.", e) ;
       throw new IOException(e);
     }
 
@@ -259,6 +262,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       persistentKey = this.reader.getCurrentKey() ;
       persistentObj = this.reader.getCurrentValue();
     } catch (Exception e) {
+      LOG.error("Error reading next key-value.", e) ;
       throw new IOException(e);
     }
 
@@ -374,6 +378,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
       case FIXED:
         // TODO: Implement FIXED data type
+        LOG.error("FIXED type not implemented") ;
         throw new RuntimeException("Fixed type not implemented") ;
 
       default:
@@ -446,6 +451,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         for (Schema s: schema.getTypes()) {
           if (s.getType() != Type.NULL) return avro2ResouceFieldSchema(s) ;
         }
+        LOG.error("Union with only ['null']?") ;
         throw new RuntimeException("Union with only ['null']?") ;
   
       case RECORD:
@@ -503,6 +509,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   
       case FIXED:
         // TODO Implement FIXED data type
+        LOG.error("FIXED type not implemented") ;
         throw new RuntimeException("Fixed type not implemented") ;
   
       default:
@@ -553,6 +560,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     try {
       this.outputFormat = GoraOutputFormatFactory.createInstance(PigGoraOutputFormat.class, this.keyClass, this.persistentClass);
     } catch (Exception e) {
+      LOG.error("Error creating PigGoraOutputFormat", e) ;
       throw new IOException(e) ;
     }
     GoraOutputFormat.setOutput(this.job, this.getDataStore(), false) ;
@@ -585,7 +593,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     List<String> pigFieldSchemasNames = new ArrayList<String>(Arrays.asList(s.fieldNames())) ;
     
     if ( !pigFieldSchemasNames.contains("key") ) {
-      throw new IOException("Expected a field called \"key\" but not found.") ;
+      LOG.error("Error when checking schema. Expected a field called \"key\", but not found.") ;
+      throw new IOException("Expected a field called \"key\", but not found.") ;
     }
 
     // All fields are mandatory
@@ -596,12 +605,17 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         if (mandatoryFieldNames.contains(pigFieldSchema.getName())) {
           Field persistentField = this.persistentSchema.getField(pigFieldSchema.getName()) ; 
           if (persistentField == null) {
+            LOG.error("Declared field in Pig [" + pigFieldSchema.getName() + "] to store does not exists in " + this.persistentClassName +".") ;
             throw new IOException("Declared field in Pig [" + pigFieldSchema.getName() + "] to store does not exists in " + this.persistentClassName +".") ;
           }
           checkEqualSchema(pigFieldSchema, this.persistentSchema.getField(pigFieldSchema.getName()).schema()) ;
         }        
       }
     } else {
+      LOG.error("Some fields declared in the constructor ("
+                            + Arrays.toString(this.loadQueryFields)
+                            + ") are missing in the tuples to be saved ("
+                            + Arrays.toString(s.fieldNames()) + ")" ) ;
       throw new IOException("Some fields declared in the constructor ("
                             + Arrays.toString(this.loadQueryFields)
                             + ") are missing in the tuples to be saved ("
@@ -626,6 +640,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     Type avroType = avroSchema.getType() ;
 
+    //TODO Add logs before throw exception
+    
     // Switch that checks if avro type matches pig type, or if avro is union and some nested type matches pig type.
     switch (pigType) {
       case DataType.BAG: // Avro Array
@@ -703,6 +719,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       }
     }
     // throws IOException(message,Exception()) to mark nested union exception.
+    LOG.error("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'")) ;
     throw new IOException("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'"), new Exception("Union not satisfied")) ;
   }
   
@@ -715,6 +732,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // Get the schema of data to write from UDFContext (coming from frontend checkSchema())
     String strSchema = getUDFProperties().getProperty(GoraStorage.GORA_STORE_SCHEMA) ;
     if (strSchema == null) {
+      LOG.error("Could not find schema in UDF context. Should have been set in checkSchema() in frontend.") ;
       throw new IOException("Could not find schema in UDF context. Should have been set in checkSchema() in frontend.") ;
     }
     
@@ -748,6 +766,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     try {
       ((GoraRecordWriter<Object,PersistentBase>) this.writer).write(t.get(0), (PersistentBase) persistentObj) ;
     } catch (InterruptedException e) {
+      LOG.error("Error writing the tuple.", e) ;
       throw new IOException(e) ;
     }
   }
@@ -766,6 +785,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // If data is null, return null (check if avro schema is right)
     if (pigData == null) {
       if (avroSchema.getType() != Type.UNION && avroSchema.getType() != Type.NULL) {
+        LOG.error("Tuple field " + field.getName() + " is null, but Avro Schema is not union nor null") ;
         throw new IOException("Tuple field " + field.getName() + " is null, but Avro Schema is not union nor null") ;
       } else {
         return null ;
@@ -834,6 +854,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         }
         
       default:
+        LOG.error("Unexpected field " + field.getName() +" with Pig type "+ DataType.genTypeToNameMap().get(field.getType())) ;
         throw new IOException("Unexpected field " + field.getName() +" with Pig type "+ DataType.genTypeToNameMap().get(field.getType())) ;
     }
     
