@@ -46,6 +46,7 @@ import org.apache.pig.ResourceStatistics;
 import org.apache.pig.StoreFuncInterface;
 import org.apache.pig.backend.executionengine.ExecException;
 import org.apache.pig.backend.hadoop.executionengine.mapReduceLayer.PigSplit;
+import org.apache.pig.builtin.Utf8StorageConverter;
 import org.apache.pig.data.BagFactory;
 import org.apache.pig.data.DataBag;
 import org.apache.pig.data.DataByteArray;
@@ -232,7 +233,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public LoadCaster getLoadCaster() throws IOException {
     LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getLoadCaster()", this);
-    return null;
+    return new Utf8StorageConverter();
   }
 
   @Override
