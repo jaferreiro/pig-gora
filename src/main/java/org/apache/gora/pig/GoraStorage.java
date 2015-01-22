@@ -18,6 +18,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericData.Array;
 import org.apache.gora.mapreduce.GoraInputFormat;
 import org.apache.gora.mapreduce.GoraInputFormatFactory;
+import org.apache.gora.mapreduce.GoraMapReduceUtils;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordReader;
@@ -176,6 +177,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public void setLocation(String location, Job job) throws IOException {
     LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setLocation() {} {}", location, this);
+    GoraMapReduceUtils.setIOSerializations(job.getConfiguration(), true) ;
     this.job = job;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }
@@ -190,6 +192,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   private JobConf initializeLocalJobConfig(Job job) {
     Properties udfProps = getUDFProperties();
     Configuration jobConf = job.getConfiguration();
+    GoraMapReduceUtils.setIOSerializations(jobConf, true) ;
     JobConf localConf = new JobConf(jobConf); // localConf starts as a copy of jobConf
     if (udfProps.containsKey(GORA_CONFIG_SET)) {
       // Already configured (maybe from frontend to backend)
@@ -572,6 +575,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @Override
   public void setStoreLocation(String location, Job job) throws IOException {
     LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setStoreLocation() {}", this) ;
+    GoraMapReduceUtils.setIOSerializations(job.getConfiguration(), true) ;
     this.job = job ;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }

@@ -12,6 +12,7 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.Schema.Type;
+import org.apache.gora.mapreduce.GoraMapReduceUtils;
 import org.apache.gora.mapreduce.GoraOutputFormat;
 import org.apache.gora.mapreduce.GoraOutputFormatFactory;
 import org.apache.gora.mapreduce.GoraRecordWriter;
@@ -138,6 +139,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
   private JobConf initializeLocalJobConfig(Job job) {
     Properties udfProps = getUDFProperties();
     Configuration jobConf = job.getConfiguration();
+    GoraMapReduceUtils.setIOSerializations(jobConf, true) ;
     JobConf localConf = new JobConf(jobConf); // localConf starts as a copy of jobConf
     if (udfProps.containsKey(GORA_CONFIG_SET)) {
       // Already configured (maybe from frontend to backend)
@@ -184,6 +186,7 @@ public class GoraDeleteStorage implements StoreFuncInterface {
 
   @Override
   public void setStoreLocation(String location, Job job) throws IOException {
+    GoraMapReduceUtils.setIOSerializations(job.getConfiguration(), true) ;
     this.job = job ;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }
