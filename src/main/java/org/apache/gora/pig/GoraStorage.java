@@ -178,6 +178,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   public void setLocation(String location, Job job) throws IOException {
     LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage setLocation() {} {}", location, this);
     GoraMapReduceUtils.setIOSerializations(job.getConfiguration(), true) ;
+    // All Splits return length==0, but must not be combined (actually are not ==0)
+    job.getConfiguration().setBoolean("pig.noSplitCombination", true);
     this.job = job;
     this.localJobConf = this.initializeLocalJobConfig(job) ;
   }
