@@ -760,10 +760,10 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     PersistentBase persistentObj = this.dataStore.newPersistent() ;
 
-    LOG.trace("key: {}", t.get(0)) ;
+    if (LOG.isTraceEnabled()) LOG.trace("key: {}", t.get(0)) ;
     for (String fieldName : this.loadQueryFields) {
-      LOG.trace("  Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
-      LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
+      if (LOG.isTraceEnabled()) LOG.trace("  Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
+      if (LOG.isTraceEnabled()) LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
       persistentObj.put(persistentObj.getField2IndexMapping().get(fieldName), // name -> index
                         this.writeField(persistentSchema.getField(fieldName).schema(),
                                         this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
@@ -801,31 +801,50 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     
     // If avroSchema is union, it will not be the null field, so select the proper one
     if (avroSchema.getType() == Type.UNION) {
+//TODO Resolve the proper schema      
       avroSchema = avroSchema.getTypes().get(1) ;
     }
+    
+    if (LOG.isTraceEnabled()) LOG.trace("write") ;
     
     switch(field.getType()) {
       case DataType.DOUBLE:
       case DataType.FLOAT:
       case DataType.LONG:
       case DataType.BOOLEAN:
-      case DataType.NULL: return (Object)pigData ;
+      case DataType.NULL:
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing double, float, long, boolean or null.") ;
+        return (Object)pigData ;
       
-      case DataType.CHARARRAY: return pigData.toString() ;
+      case DataType.CHARARRAY:
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing chararray.") ;
+        return pigData.toString() ;
       
       case DataType.INTEGER:
-          if (avroSchema.getType() == Type.ENUM) {
-            AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
-          }else{
-            return (Integer)pigData ;
-          }
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing integer/enum.") ;
+        if (avroSchema.getType() == Type.ENUM) {
+          return AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
+        }else{
+          return (Integer)pigData ;
+        }
           
-      case DataType.BYTEARRAY: return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
+      case DataType.BYTEARRAY:
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing bytearray.") ;
+        return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
       
       case DataType.MAP: // Pig Map -> Avro Map
-        return pigData ;
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing map.") ;
+        @SuppressWarnings("unchecked")
+        Map<String,Object> pigMap = (Map<String,Object>) pigData ;
+        Map<String,Object> goraMap = new HashMap<String, Object>(pigMap.size()) ;
+
+        for(Entry<String,Object> pigEntry : pigMap.entrySet()) {
+          goraMap.put(pigEntry.getKey(), this.writeField(avroSchema.getValueType(), field.getSchema().getFields()[0], pigEntry.getValue())) ;
+        }
+        return goraMap ;
         
       case DataType.BAG: // Pig Bag -> Avro Array
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing bag.") ;
         Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
         for (Object pigArrayElement: (DataBag)pigData) {
           if (avroSchema.getElementType().getType() == Type.RECORD) {
@@ -833,13 +852,14 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
             // We want the map as: map((a1,a2,a3), (b1,b2,b3),...) instead of map(((a1,a2,a3)), ((b1,b2,b3)), ...)
             persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0], pigArrayElement)) ;
           } else {
-            // Every map has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
+            // Every bag has a tuple as element type. Since this is not a record, that "tuple" container must be ignored
             persistentArray.add(this.writeField(avroSchema.getElementType(), field.getSchema().getFields()[0].getSchema().getFields()[0], ((Tuple)pigArrayElement).get(0))) ;
           }
         }
         return persistentArray ;
         
       case DataType.TUPLE: // Pig Tuple -> Avro Record
+        if (LOG.isTraceEnabled()) LOG.trace("  Writing tuple.") ;
         try {
           PersistentBase persistentRecord = (PersistentBase) Class.forName(avroSchema.getFullName()).newInstance();
           

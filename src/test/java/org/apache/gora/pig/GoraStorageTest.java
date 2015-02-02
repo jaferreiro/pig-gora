@@ -39,7 +39,7 @@ public class GoraStorageTest {
   /**
    * Configures if execute pigServer in local or in a cluster
    */
-  private static ExecType pigServerExecType = ExecType.MAPREDUCE ; 
+  private static ExecType pigServerExecType = ExecType.LOCAL ; 
   
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
@@ -179,7 +179,7 @@ public class GoraStorageTest {
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
         "'outlinks') ;",1);
-    pigServer.registerQuery("pages_updated = FOREACH pages GENERATE key, MapMerge(outlinks, map_values.outlinks) as outlinks ;") ;
+    pigServer.registerQuery("pages_updated = FOREACH pages GENERATE key, MapMerge(outlinks, map_values.outlinks) as outlinks:map[chararray] ;") ;
     pigServer.registerQuery("STORE pages_updated INTO '.' using org.apache.gora.pig.GoraStorage(" +
         "'java.lang.String'," +
         "'org.apache.gora.examples.generated.WebPage'," +
