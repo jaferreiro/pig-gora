@@ -801,11 +801,9 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     
     // If avroSchema is union, it will not be the null field, so select the proper one
     if (avroSchema.getType() == Type.UNION) {
-//TODO Resolve the proper schema      
+      //TODO Resolve the proper schema      
       avroSchema = avroSchema.getTypes().get(1) ;
     }
-    
-    if (LOG.isTraceEnabled()) LOG.trace("write") ;
     
     switch(field.getType()) {
       case DataType.DOUBLE:
@@ -813,15 +811,15 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.LONG:
       case DataType.BOOLEAN:
       case DataType.NULL:
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing double, float, long, boolean or null.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing double, float, long, boolean or null.") ;
         return (Object)pigData ;
       
       case DataType.CHARARRAY:
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing chararray.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing chararray.") ;
         return pigData.toString() ;
       
       case DataType.INTEGER:
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing integer/enum.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing integer/enum.") ;
         if (avroSchema.getType() == Type.ENUM) {
           return AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
         }else{
@@ -829,11 +827,11 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         }
           
       case DataType.BYTEARRAY:
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing bytearray.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing bytearray.") ;
         return ByteBuffer.wrap(((DataByteArray)pigData).get()) ;
       
       case DataType.MAP: // Pig Map -> Avro Map
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing map.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("   Writing map.") ;
         @SuppressWarnings("unchecked")
         Map<String,Object> pigMap = (Map<String,Object>) pigData ;
         Map<String,Object> goraMap = new HashMap<String, Object>(pigMap.size()) ;
@@ -844,7 +842,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         return goraMap ;
         
       case DataType.BAG: // Pig Bag -> Avro Array
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing bag.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing bag.") ;
         Array<Object> persistentArray = new Array<Object>((int)((DataBag)pigData).size(),avroSchema) ;
         for (Object pigArrayElement: (DataBag)pigData) {
           if (avroSchema.getElementType().getType() == Type.RECORD) {
@@ -859,7 +857,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         return persistentArray ;
         
       case DataType.TUPLE: // Pig Tuple -> Avro Record
-        if (LOG.isTraceEnabled()) LOG.trace("  Writing tuple.") ;
+        if (LOG.isTraceEnabled()) LOG.trace("    Writing tuple.") ;
         try {
           PersistentBase persistentRecord = (PersistentBase) Class.forName(avroSchema.getFullName()).newInstance();
           
