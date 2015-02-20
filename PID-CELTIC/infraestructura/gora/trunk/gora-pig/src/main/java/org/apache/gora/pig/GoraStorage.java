@@ -237,7 +237,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
   @Override
   public LoadCaster getLoadCaster() throws IOException {
-    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getLoadCaster()", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" getLoadCaster()");
     return new Utf8StorageConverter();
   }
 
@@ -245,17 +245,20 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   @SuppressWarnings({ "rawtypes" })
   public void prepareToRead(RecordReader reader, PigSplit split)
       throws IOException {
-    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage prepareToRead {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" prepareToRead()");
     this.reader = (GoraRecordReader<?, ?>) reader;
     this.split = split;
   }
 
   @Override
   public Tuple getNext() throws IOException {
-    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" GoraStorage getNext() {}", this);
+    LOG.trace("***"+(UDFContext.getUDFContext().isFrontend()?"[FRONTEND]":"[BACKEND]")+" getNext()");
 
     try {
-      if (!this.reader.nextKeyValue()) return null;
+      if (!this.reader.nextKeyValue()) {
+          LOG.trace("    Fin de lectura (null)") ;
+          return null;
+      }
     } catch (Exception e) {
       LOG.error("Error retrieving next key-value.", e) ;
       throw new IOException(e);
