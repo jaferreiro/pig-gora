@@ -266,6 +266,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     try {
       persistentKey = this.reader.getCurrentKey() ;
+      LOG.trace("    key: {}", persistentKey) ;
       persistentObj = this.reader.getCurrentValue();
     } catch (Exception e) {
       LOG.error("Error reading next key-value.", e) ;
