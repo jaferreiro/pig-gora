@@ -411,6 +411,37 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     return location ;
   }
   
+  /**  
+   * Class created to avoid the StackoverflowException of recursive schemas when creating the
+   * schema in #getSchema.
+   * It holds the count of how many references to a Record schema has been created in a recursive call
+   * to use it only once (not counting the topmost) and the third time will be returned a schemaless tuple (= avro record).
+   */
+  private class RecursiveRecordSchema {
+    Map<String,Integer> generatedSchemas = new HashMap<String,Integer>() ;
+    public int incSchema(String schemaName) {
+      int numReferences = 0 ;
+      if (generatedSchemas.containsKey(schemaName)) {
+        numReferences = generatedSchemas.get(schemaName) ;
+      }
+      generatedSchemas.put(schemaName, ++numReferences) ;
+      return numReferences ;
+    }
+    public void decSchema(String schemaName) {
+      if (generatedSchemas.containsKey(schemaName)) {
+        int numReferences = generatedSchemas.get(schemaName) ;
+        if (numReferences > 0) {
+          generatedSchemas.put(schemaName, --numReferences) ;
+        }
+      }
+    }
+    public void clear() {
+      generatedSchemas.clear() ;
+    }
+    
+  } ;
+  
+  private RecursiveRecordSchema recursiveRecordSchema = new RecursiveRecordSchema() ;
   /**
    * Retrieves the Pig Schema from the declared fields in constructor and the Avro Schema
    * Avro Schema must begin with a record.
@@ -428,6 +459,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     resourceFieldSchemas = new ResourceFieldSchema[numFields] ;
     resourceFieldSchemas[0] = new ResourceFieldSchema().setType(DataType.findType(this.keyClass)).setName("key") ;
     for (int fieldIndex = 1; fieldIndex < numFields ; fieldIndex++) {
+      recursiveRecordSchema.clear() ; // Initialize the recursive schema checker in each field
       Field field = this.persistentSchema.getField(this.loadQueryFields[fieldIndex-1]) ;
       resourceFieldSchemas[fieldIndex] = this.avro2ResouceFieldSchema(field.schema()).setName(field.name()) ;
     }
@@ -466,6 +498,13 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
   
       case RECORD:
         // A record in Gora is a Tuple in Pig
+        if (recursiveRecordSchema.incSchema(schema.getName()) > 1) {
+          // Recursivity detected (and we are 2 levels bellow desired)
+          recursiveRecordSchema.decSchema(schema.getName()) ; // So we can put the esquema of bother leafs
+          // Return a tuple schema with no fields
+          return new ResourceFieldSchema().setType(DataType.TUPLE) ;
+        }
+
         int numRecordFields = schema.getFields().size() ;
         Iterator<Field> recordFields = schema.getFields().iterator();
         ResourceFieldSchema returnRecordResourceFieldSchema = new ResourceFieldSchema().setType(DataType.TUPLE) ;
