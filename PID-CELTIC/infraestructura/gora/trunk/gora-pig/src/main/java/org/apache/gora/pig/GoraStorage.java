@@ -652,6 +652,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     List<String> mandatoryFieldNames = new ArrayList<String>(Arrays.asList(this.loadQueryFields)) ;
     if (pigFieldSchemasNames.containsAll(mandatoryFieldNames)) {
       for (ResourceFieldSchema pigFieldSchema: pigFieldSchemas) {
+        LOG.trace("  Pig field {}", pigFieldSchema.getName()) ;
         if (mandatoryFieldNames.contains(pigFieldSchema.getName())) {
           Field persistentField = this.persistentSchema.getField(pigFieldSchema.getName()) ; 
           if (persistentField == null) {
@@ -695,47 +696,58 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     // Switch that checks if avro type matches pig type, or if avro is union and some nested type matches pig type.
     switch (pigType) {
       case DataType.BAG: // Avro Array
+        LOG.trace("    Bag") ;
         if (!avroType.equals(Type.ARRAY) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig BAG with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         checkEqualSchema(pigFieldSchema.getSchema().getFields()[0].getSchema().getFields()[0], avroSchema.getElementType()) ;
         break ;
       case DataType.BOOLEAN:
+        LOG.trace("    Boolean") ;
         if (!avroType.equals(Type.BOOLEAN) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig BOOLEAN with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.BYTEARRAY:
+        LOG.trace("    Bytearray") ;
         if (!avroType.equals(Type.BYTES) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig BYTEARRAY with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.CHARARRAY: // String
+        LOG.trace("    Chararray") ;
         if (!avroType.equals(Type.STRING) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig CHARARRAY with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break;
       case DataType.DOUBLE:
+        LOG.trace("    Double") ;
         if (!avroType.equals(Type.DOUBLE) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig DOUBLE with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.FLOAT:
+        LOG.trace("    Float") ;
         if (!avroType.equals(Type.FLOAT) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig FLOAT with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.INTEGER: // Int or Enum
+        LOG.trace("    Integer") ;
         if (!avroType.equals(Type.INT) && !avroType.equals(Type.ENUM) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig INTEGER with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.LONG:
+        LOG.trace("    Long") ;
         if (!avroType.equals(Type.LONG) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig LONG with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.MAP: // Avro Map
+        LOG.trace("    Map") ;
         if (!avroType.equals(Type.MAP) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig MAP with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.NULL: // Avro nullable??
+        LOG.trace("    Type Null") ;
         if(!avroType.equals(Type.NULL) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig NULL with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
       case DataType.TUPLE: // Avro Record
+        LOG.trace("    Tuple") ;
         if (!avroType.equals(Type.RECORD) && !checkUnionSchema(avroSchema, pigFieldSchema))
           throw new IOException("Can not convert field [" + fieldName + "] from Pig TUPLE(record) with schema " + pigFieldSchema.getSchema() + " to avro " + avroType.name()) ;
         break ;
@@ -758,6 +770,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     for (Schema unionElementSchema: avroSchema.getTypes()) {
       try {
+        LOG.trace("    Checking pig schema with avro union [{},...]", unionElementSchema.getType().getName()) ;
         checkEqualSchema(pigFieldSchema, unionElementSchema) ;
         return true ;
       }catch (IOException e){
@@ -770,7 +783,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     }
     // throws IOException(message,Exception()) to mark nested union exception.
     LOG.error("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'")) ;
-    throw new IOException("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'"), new Exception("Union not satisfied")) ;
+    throw new IOException("Expected some field defined in '"+avroSchema.getName()+"' for pig schema type '"+DataType.genTypeToNameMap().get(pigFieldSchema.getType()+"'")+"'", new Exception("Union not satisfied")) ;
   }
   
   @Override
