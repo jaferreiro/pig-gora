@@ -770,7 +770,7 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     for (Schema unionElementSchema: avroSchema.getTypes()) {
       try {
-        LOG.trace("    Checking pig schema {} with avro union [{},...]", pigFieldSchema.getName(), unionElementSchema.getType().getName()) ;
+        LOG.trace("    Checking pig schema '{}' with avro union '[{},...]'", DataType.findTypeName(pigFieldSchema.getType()), unionElementSchema.getType().getName()) ;
         checkEqualSchema(pigFieldSchema, unionElementSchema) ;
         return true ;
       }catch (IOException e){
