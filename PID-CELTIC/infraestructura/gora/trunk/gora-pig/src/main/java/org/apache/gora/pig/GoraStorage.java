@@ -820,10 +820,17 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     for (String fieldName : this.loadQueryFields) {
       if (LOG.isTraceEnabled()) LOG.trace("  Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
       if (LOG.isTraceEnabled()) LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
-      persistentObj.put(persistentObj.getField2IndexMapping().get(fieldName), // name -> index
+
+      int goraFieldIndex = persistentObj.getField2IndexMapping().get(fieldName) ;  // name -> index
+      ResourceFieldSchemaWithIndex writeResourceFieldSchemaWithIndex = this.writeResourceFieldSchemaMap.get(fieldName) ;
+      if (writeResourceFieldSchemaWithIndex == null) {
+        if (LOG.isTraceEnabled()) LOG.trace("Field {} defined in constructor not found in the tuple to persist, skipping field", fieldName) ;
+        continue ;
+      }
+      persistentObj.put(goraFieldIndex,
                         this.writeField(persistentSchema.getField(fieldName).schema(),
-                                        this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema(),
-                                        t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex()))) ;
+                                        writeResourceFieldSchemaWithIndex.getResourceFieldSchema(),
+                                        t.get(writeResourceFieldSchemaWithIndex.getIndex()))) ;
     }
 
     try {
