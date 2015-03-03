@@ -818,9 +818,19 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
 
     if (LOG.isTraceEnabled()) LOG.trace("key: {}", t.get(0)) ;
     for (String fieldName : this.loadQueryFields) {
-      if (LOG.isTraceEnabled()) LOG.trace("  Put fieldName: {} {}", fieldName, this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
-      if (LOG.isTraceEnabled()) LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("  Put fieldname: {}", fieldName) ;
+        LOG.trace("      resourcefield schema: {}", this.writeResourceFieldSchemaMap.get(fieldName).getResourceFieldSchema()) ;
+        LOG.trace("      value: {} - {}",this.writeResourceFieldSchemaMap.get(fieldName).getIndex(), t.get(this.writeResourceFieldSchemaMap.get(fieldName).getIndex())) ;
+      }
 
+      assert persistentObj != null ;
+      assert persistentObj.getField2IndexMapping() != null ;
+      
+      for (Entry<String,Integer> entry : persistentObj.getField2IndexMapping().entrySet()) {
+        LOG.trace("  ({},{})", entry.getKey(), entry.getValue()) ;
+      }
+      
       int goraFieldIndex = persistentObj.getField2IndexMapping().get(fieldName) ;  // name -> index
       ResourceFieldSchemaWithIndex writeResourceFieldSchemaWithIndex = this.writeResourceFieldSchemaMap.get(fieldName) ;
       if (writeResourceFieldSchemaWithIndex == null) {
