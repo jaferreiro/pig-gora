@@ -827,8 +827,10 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       assert persistentObj != null ;
       assert persistentObj.getField2IndexMapping() != null ;
       
-      for (Entry<String,Integer> entry : persistentObj.getField2IndexMapping().entrySet()) {
-        LOG.trace("  ({},{})", entry.getKey(), entry.getValue()) ;
+      if (LOG.isTraceEnabled()) {
+        for (Entry<String,Integer> entry : persistentObj.getField2IndexMapping().entrySet()) {
+          LOG.trace("  ({},{})", entry.getKey(), entry.getValue()) ;
+        }
       }
       
       int goraFieldIndex = persistentObj.getField2IndexMapping().get(fieldName) ;  // name -> index
