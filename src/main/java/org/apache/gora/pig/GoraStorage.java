@@ -839,9 +839,22 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         if (LOG.isTraceEnabled()) LOG.trace("Field {} defined in constructor not found in the tuple to persist, skipping field", fieldName) ;
         continue ;
       }
+      
+      Field persistentField = persistentSchema.getField(fieldName) ;
+      if (persistentField == null) {
+        LOG.error("El campo " + fieldName + " no existe en el esquema AVRO de Gora.") ;
+        throw new IOException("El campo " + fieldName + " no existe en el esquema AVRO de Gora.") ;
+      }
+      
+      ResourceFieldSchema pigFieldSchema = writeResourceFieldSchemaWithIndex.getResourceFieldSchema() ;
+      if (pigFieldSchema == null) {
+        LOG.error("El campo " + fieldName + " no posee esquema en Pig a la hora de grabar.") ;
+        throw new IOException("El campo " + fieldName + " no posee esquema en Pig a la hora de grabar.") ;
+      }
+      
       persistentObj.put(goraFieldIndex,
-                        this.writeField(persistentSchema.getField(fieldName).schema(),
-                                        writeResourceFieldSchemaWithIndex.getResourceFieldSchema(),
+                        this.writeField(persistentField.schema(),
+                                        pigFieldSchema,
                                         t.get(writeResourceFieldSchemaWithIndex.getIndex()))) ;
     }
 
@@ -911,6 +924,11 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
         Map<String,Object> pigMap = (Map<String,Object>) pigData ;
         Map<String,Object> goraMap = new HashMap<String, Object>(pigMap.size()) ;
 
+        if (field.getSchema() == null) {
+            LOG.error("El map a grabar no posee esquema.") ;
+            throw new IOException("El map a grabar no posee esquema.") ;
+        }
+        
         for(Entry<String,Object> pigEntry : pigMap.entrySet()) {
           goraMap.put(pigEntry.getKey(), this.writeField(avroSchema.getValueType(), field.getSchema().getFields()[0], pigEntry.getValue())) ;
         }
