@@ -909,9 +909,9 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       case DataType.INTEGER:
         if (LOG.isTraceEnabled()) LOG.trace("    Writing integer/enum.") ;
         if (avroSchema.getType() == Type.ENUM) {
-          return AvroUtils.getEnumValue(avroSchema, (Integer)pigData);
+          return AvroUtils.getEnumValue(avroSchema, ((Number)pigData).intValue());
         }else{
-          return (Integer)pigData ;
+          return ((Number)pigData).intValue() ;
         }
           
       case DataType.BYTEARRAY:
