@@ -461,6 +461,10 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
     for (int fieldIndex = 1; fieldIndex < numFields ; fieldIndex++) {
       recursiveRecordSchema.clear() ; // Initialize the recursive schema checker in each field
       Field field = this.persistentSchema.getField(this.loadQueryFields[fieldIndex-1]) ;
+      if (field == null) {
+        LOG.error("Field \"" + this.loadQueryFields[fieldIndex-1] + "\" not found in the entity " + this.persistentClassName ) ;
+        throw new IOException("Field \"" + this.loadQueryFields[fieldIndex-1] + "\" not found in the entity " + this.persistentClassName ) ;
+      }
       resourceFieldSchemas[fieldIndex] = this.avro2ResouceFieldSchema(field.schema()).setName(field.name()) ;
     }
 
