@@ -802,7 +802,8 @@ public class GoraStorage extends LoadFunc implements StoreFuncInterface, LoadMet
       LOG.error("Could not find schema in UDF context. Should have been set in checkSchema() in frontend.") ;
       throw new IOException("Could not find schema in UDF context. Should have been set in checkSchema() in frontend.") ;
     }
-    
+
+    LOG.info("Schema read from frontend to write: " + strSchema) ;
     // Parse de the schema from string stored in properties object
     this.writeResourceSchema = new ResourceSchema(Utils.getSchemaFromString(strSchema)) ;
     if (LOG.isTraceEnabled()) LOG.trace(this.writeResourceSchema.toString()) ;
